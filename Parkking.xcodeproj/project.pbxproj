@@ -6,11 +6,27 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		E562540E5E945675897EFC68 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D4AB1E46301928A8001B2DB5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D4AB1E4D301928A8001B2DB5;
+			remoteInfo = Parkking;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		1AF2097050E85105846023E1 /* ParkkingTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ParkkingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D4AB1E4E301928A8001B2DB5 /* Parkking.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Parkking.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B0284C79E98854D9A037B055 /* ParkkingTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ParkkingTests;
+			sourceTree = "<group>";
+		};
 		D4AB1E50301928A8001B2DB5 /* Parkking */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Parkking;
@@ -19,6 +35,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		5323079F3ECA56F2BFACC5F4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D4AB1E4B301928A8001B2DB5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				D4AB1E50301928A8001B2DB5 /* Parkking */,
+				B0284C79E98854D9A037B055 /* ParkkingTests */,
 				D4AB1E4F301928A8001B2DB5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				D4AB1E4E301928A8001B2DB5 /* Parkking.app */,
+				1AF2097050E85105846023E1 /* ParkkingTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +73,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		AAF25016723255E78E51E9D6 /* ParkkingTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B046E89B6F8B57FCAC6039A4 /* Build configuration list for PBXNativeTarget "ParkkingTests" */;
+			buildPhases = (
+				29CDA0D1B5E95B26BED3FA25 /* Sources */,
+				5323079F3ECA56F2BFACC5F4 /* Frameworks */,
+				BF270B0659DB597E809C3B4F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9AFD6C4B88C8552DACED2AF9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B0284C79E98854D9A037B055 /* ParkkingTests */,
+			);
+			name = ParkkingTests;
+			packageProductDependencies = (
+			);
+			productName = ParkkingTests;
+			productReference = 1AF2097050E85105846023E1 /* ParkkingTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		D4AB1E4D301928A8001B2DB5 /* Parkking */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D4AB1E59301928AB001B2DB5 /* Build configuration list for PBXNativeTarget "Parkking" */;
@@ -80,6 +128,10 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					AAF25016723255E78E51E9D6 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = D4AB1E4D301928A8001B2DB5;
+					};
 					D4AB1E4D301928A8001B2DB5 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -100,11 +152,19 @@
 			projectRoot = "";
 			targets = (
 				D4AB1E4D301928A8001B2DB5 /* Parkking */,
+				AAF25016723255E78E51E9D6 /* ParkkingTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		BF270B0659DB597E809C3B4F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D4AB1E4C301928A8001B2DB5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +175,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		29CDA0D1B5E95B26BED3FA25 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D4AB1E4A301928A8001B2DB5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +191,37 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		9AFD6C4B88C8552DACED2AF9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D4AB1E4D301928A8001B2DB5 /* Parkking */;
+			targetProxy = E562540E5E945675897EFC68 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		BAFA24675CA25AF09074D635 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X24683B26Z;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.joeyhershkop.ParkkingTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Parkking.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Parkking";
+			};
+			name = Debug;
+		};
 		D4AB1E57301928AB001B2DB5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -259,7 +356,6 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -274,7 +370,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -291,7 +387,6 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -306,13 +401,44 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D7977171B51154479E6D94FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X24683B26Z;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.joeyhershkop.ParkkingTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Parkking.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Parkking";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B046E89B6F8B57FCAC6039A4 /* Build configuration list for PBXNativeTarget "ParkkingTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAFA24675CA25AF09074D635 /* Debug */,
+				D7977171B51154479E6D94FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		D4AB1E49301928A8001B2DB5 /* Build configuration list for PBXProject "Parkking" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
