@@ -11,9 +11,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D4AB1E50301928A8001B2DB5 /* Parkking-iOS */ = {
+		D4AB1E50301928A8001B2DB5 /* Parkking */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Parkking-iOS";
+			path = Parkking;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		D4AB1E45301928A8001B2DB5 = {
 			isa = PBXGroup;
 			children = (
-				D4AB1E50301928A8001B2DB5 /* Parkking-iOS */,
+				D4AB1E50301928A8001B2DB5 /* Parkking */,
 				D4AB1E4F301928A8001B2DB5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,7 +61,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				D4AB1E50301928A8001B2DB5 /* Parkking-iOS */,
+				D4AB1E50301928A8001B2DB5 /* Parkking */,
 			);
 			name = Parkking;
 			packageProductDependencies = (
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = D4AB1E49301928A8001B2DB5 /* Build configuration list for PBXProject "Parkking-iOS" */;
+			buildConfigurationList = D4AB1E49301928A8001B2DB5 /* Build configuration list for PBXProject "Parkking" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -313,7 +313,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D4AB1E49301928A8001B2DB5 /* Build configuration list for PBXProject "Parkking-iOS" */ = {
+		D4AB1E49301928A8001B2DB5 /* Build configuration list for PBXProject "Parkking" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D4AB1E57301928AB001B2DB5 /* Debug */,
