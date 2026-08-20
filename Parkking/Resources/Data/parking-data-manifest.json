@@ -1,0 +1,9 @@
+{
+  "scheduleSchemaVersion": 1,
+  "featureCount": 21433,
+  "byteSize": 15870101,
+  "sha256": "d985b98cafe6a44060e0fdbd50b21adcea1ca17e6590120a1a120dd372216cc7",
+  "sourceRepo": "parking-pipeline",
+  "sourceRevision": "0a68237adf8b81d06b97717aa0883e50e0cdec99",
+  "filename": "final_parking_map.geojson"
+}
