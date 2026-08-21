@@ -23,7 +23,6 @@ enum ParkingGeoJSONDecoder {
                   let type = geometryObj["type"] as? String
             else { continue }
 
-            // FeatureID follows source order (including skipped Points) for stable identity.
             if type == "Point" {
                 skippedPoints += 1
                 continue
@@ -36,7 +35,7 @@ enum ParkingGeoJSONDecoder {
             let propsObj = raw["properties"] as? [String: Any] ?? [:]
             let props = decodeProperties(propsObj)
             let feature = ParkingFeature(
-                id: FeatureID(index),
+                id: FeatureID.fromSourceID(props.sourceID, index: index),
                 geometry: geometry,
                 properties: props
             )
@@ -63,6 +62,9 @@ enum ParkingGeoJSONDecoder {
             guard !mapped.isEmpty else { return nil }
             return .multiLineString(coordinates: mapped)
 
+        case "Polygon", "GeometryCollection":
+            return nil
+
         default:
             return nil
         }
@@ -76,6 +78,18 @@ enum ParkingGeoJSONDecoder {
         let max = stringValue(obj["max"])
         let maxMinutes = intValue(obj["maxMinutes"])
         let disjoint = boolValue(obj["disjoint_block"])
+        let sourceID = stringValue(obj["_id"])
+        let sideMode = stringValue(obj["side_mode"])
+        let curbGeometryMethod = stringValue(obj["curb_geometry_method"])
+        let curbConfidence = doubleValue(obj["curb_confidence"])
+        let curbCoverage = doubleValue(obj["curb_coverage"])
+        let medianOffsetM = doubleValue(obj["median_offset_m"])
+        let curbOverride = boolValue(obj["curb_override"])
+        let curbWarnings = stringList(obj["curb_warnings"])
+        let centrelineIDs = intList(obj["centreline_ids"])
+        let roadEdgeObjectIDs = intList(obj["road_edge_object_ids"])
+        let centrelineConstruction = stringValue(obj["centreline_construction"])
+        let mergeDroppedComponent = boolValue(obj["merge_dropped_component"])
 
         var schedule: Schedule?
         if let scheduleObj = obj["schedule"] as? [String: Any] {
@@ -94,7 +108,19 @@ enum ParkingGeoJSONDecoder {
             max: max,
             schedule: schedule,
             maxMinutes: maxMinutes,
-            disjointBlock: disjoint
+            disjointBlock: disjoint,
+            sourceID: sourceID,
+            sideMode: sideMode,
+            curbGeometryMethod: curbGeometryMethod,
+            curbConfidence: curbConfidence,
+            curbCoverage: curbCoverage,
+            medianOffsetM: medianOffsetM,
+            curbOverride: curbOverride,
+            curbWarnings: curbWarnings,
+            centrelineIDs: centrelineIDs,
+            roadEdgeObjectIDs: roadEdgeObjectIDs,
+            centrelineConstruction: centrelineConstruction,
+            mergeDroppedComponent: mergeDroppedComponent
         )
     }
 
@@ -113,6 +139,14 @@ enum ParkingGeoJSONDecoder {
         return nil
     }
 
+    nonisolated private static func doubleValue(_ any: Any?) -> Double? {
+        if let d = any as? Double { return d }
+        if let i = any as? Int { return Double(i) }
+        if let n = any as? NSNumber { return n.doubleValue }
+        if let s = any as? String, let d = Double(s) { return d }
+        return nil
+    }
+
     nonisolated private static func boolValue(_ any: Any?) -> Bool? {
         if any is NSNull || any == nil { return nil }
         if let b = any as? Bool { return b }
@@ -125,6 +159,49 @@ enum ParkingGeoJSONDecoder {
             return true
         }
         if let n = any as? NSNumber { return n.boolValue }
+        return nil
+    }
+
+    nonisolated private static func stringList(_ any: Any?) -> [String]? {
+        if any is NSNull || any == nil { return nil }
+        if let arr = any as? [Any] {
+            return arr.compactMap { stringValue($0) }
+        }
+        if let s = any as? String {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed == "null" { return nil }
+            if let data = trimmed.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data)
+            {
+                return stringList(json)
+            }
+            let parts = trimmed
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return parts
+        }
+        return nil
+    }
+
+    nonisolated private static func intList(_ any: Any?) -> [Int]? {
+        if any is NSNull || any == nil { return nil }
+        if let arr = any as? [Any] {
+            return arr.compactMap { intValue($0) }
+        }
+        if let s = any as? String {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed == "null" { return nil }
+            if let data = trimmed.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data)
+            {
+                return intList(json)
+            }
+            let parts = trimmed
+                .split(separator: ",")
+                .compactMap { intValue($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            return parts
+        }
         return nil
     }
 

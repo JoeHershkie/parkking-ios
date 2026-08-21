@@ -12,9 +12,9 @@ struct ParkingDataManifest: Sendable, Codable, Equatable {
 
     nonisolated static let bundled = ParkingDataManifest(
         scheduleSchemaVersion: 1,
-        featureCount: 21_433,
-        byteSize: 15_870_101,
-        sha256: "d985b98cafe6a44060e0fdbd50b21adcea1ca17e6590120a1a120dd372216cc7",
+        featureCount: 21_424,
+        byteSize: 30_495_169,
+        sha256: "a8fc75d6284509281d75ee622c7773518580b014f4ccdac2a56585d00bdc0cf1",
         sourceRepo: "parking-pipeline",
         sourceRevision: "0a68237adf8b81d06b97717aa0883e50e0cdec99",
         filename: "final_parking_map.geojson"

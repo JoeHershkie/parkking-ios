@@ -20,7 +20,10 @@ struct PerformanceGateTests {
     func indexedTapSelectionTiming() throws {
         let dataset = try ParkingDataStore.loadDataset(bundle: .main, validateHash: false)
         let point = LngLat(lng: -79.38, lat: 43.65)
-        let pad = CurbGeometry.degreesPad(forMeters: 80, atLatitude: point.lat)
+        let pad = CurbGeometry.degreesPad(
+            forMeters: CurbSelection.tapMaxDistanceMeters,
+            atLatitude: point.lat
+        )
         let started = ContinuousClock.now
         let subset = dataset.index.queryBBox(
             BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),

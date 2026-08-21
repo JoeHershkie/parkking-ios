@@ -9,17 +9,45 @@ struct CurbSelectionTests {
         side: String,
         coords: [[Double]],
         rule: String = "rule",
-        id: Int
+        id: Int,
+        sourceID: String? = nil,
+        sideMode: String? = nil
     ) -> ParkingFeature {
         ParkingFeature(
-            id: FeatureID(id),
+            id: FeatureID.fromSourceID(sourceID, index: id),
             geometry: .lineString(coordinates: coords),
             properties: ParkingProperties(
                 highway: street,
                 rule: rule,
                 scheduleCategory: "no_parking",
                 side: side,
-                max: nil
+                max: nil,
+                sourceID: sourceID,
+                sideMode: sideMode
+            )
+        )
+    }
+
+    private func multiLine(
+        street: String,
+        side: String,
+        parts: [[[Double]]],
+        rule: String = "rule",
+        id: Int,
+        sourceID: String? = nil,
+        sideMode: String? = nil
+    ) -> ParkingFeature {
+        ParkingFeature(
+            id: FeatureID.fromSourceID(sourceID, index: id),
+            geometry: .multiLineString(coordinates: parts),
+            properties: ParkingProperties(
+                highway: street,
+                rule: rule,
+                scheduleCategory: "no_parking",
+                side: side,
+                max: nil,
+                sourceID: sourceID,
+                sideMode: sideMode
             )
         )
     }
@@ -48,14 +76,15 @@ struct CurbSelectionTests {
             id: 2
         )
 
+        let radius = CurbSelection.tapMaxDistanceMeters
         let candidates = CurbSelection.findNearestCurbCandidates(
             features: [nearNorth, nearSouth, farSameStreet],
             point: LngLat(lng: -79.4005, lat: 43.65005),
-            maxDistanceMeters: 80
+            maxDistanceMeters: radius
         )
         #expect(candidates.count >= 2)
         #expect(candidates[0].street == "Queen St")
-        #expect(candidates.allSatisfy { $0.distanceMeters <= 80 })
+        #expect(candidates.allSatisfy { $0.distanceMeters <= radius })
     }
 
     @Test("groups local street sides without whole-street merging")
@@ -89,7 +118,7 @@ struct CurbSelectionTests {
         )
         let groups = CurbSelection.groupLocalCurbSides(
             candidates: candidates,
-            localClusterMeters: 120
+            localClusterMeters: CurbSelection.localClusterMeters
         )
         let north = groups.first { $0.sideDisplay.contains("North") }
         #expect(north != nil)
@@ -129,5 +158,81 @@ struct CurbSelectionTests {
             )
             #expect(preferred.selectedGroupKey == other.groupKey)
         }
+    }
+
+    @Test("tapping nearer Both MLS part selects parent _id as one rule")
+    func tappingNearerBothPartSelectsParentID() {
+        let both = multiLine(
+            street: "Both St",
+            side: "Both",
+            parts: [
+                [[-79.4010, 43.6500], [-79.4010, 43.6508]],
+                [[-79.40088, 43.6500], [-79.40088, 43.6508]],
+            ],
+            rule: "both rule",
+            id: 0,
+            sourceID: "9002",
+            sideMode: "multi"
+        )
+        let west = line(
+            street: "West St",
+            side: "West",
+            coords: [[-79.4025, 43.6500], [-79.4025, 43.6508]],
+            rule: "west rule",
+            id: 1,
+            sourceID: "9001",
+            sideMode: "single"
+        )
+
+        let tap = LngLat(lng: -79.40090, lat: 43.6504)
+        let result = CurbSelection.selectNearestCurb(
+            features: [both, west],
+            point: tap
+        )
+        #expect(result.selected?.featureIDs == [FeatureID("9002")])
+        #expect(result.selected?.featureKeys == ["9002"])
+        #expect(result.selected?.features.count == 1)
+        #expect(result.selected?.side == "Both")
+        #expect(CurbGeometry.lineParts(both.geometry).count == 2)
+    }
+
+    @Test("disjoint MLS clusters using nearest part, not part 0 midpoint")
+    func disjointMLSClustersUsingNearestPart() {
+        let near = line(
+            street: "Queen St",
+            side: "North",
+            coords: [[-79.4000, 43.6500], [-79.4008, 43.6500]],
+            rule: "near rule",
+            id: 0,
+            sourceID: "near"
+        )
+        let disjoint = multiLine(
+            street: "Queen St",
+            side: "North",
+            parts: [
+                [[-79.4200, 43.6600], [-79.4208, 43.6600]],
+                [[-79.4001, 43.65005], [-79.4007, 43.65005]],
+            ],
+            rule: "disjoint rule",
+            id: 1,
+            sourceID: "disjoint"
+        )
+
+        let candidates = CurbSelection.findNearestCurbCandidates(
+            features: [near, disjoint],
+            point: LngLat(lng: -79.4004, lat: 43.65002),
+            maxDistanceMeters: 80
+        )
+        let groups = CurbSelection.groupLocalCurbSides(
+            candidates: candidates,
+            localClusterMeters: CurbSelection.localClusterMeters
+        )
+        #expect(groups.count == 1)
+        #expect(groups[0].features.contains { $0.id.rawValue == "disjoint" })
+        #expect(CurbGeometry.geometryMidpoint(disjoint.geometry)?.lat ?? 0 > 43.655)
+        #expect(
+            CurbGeometry.minDistanceBetweenGeometriesMeters(near.geometry, disjoint.geometry)
+                < CurbSelection.localClusterMeters
+        )
     }
 }

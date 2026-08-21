@@ -5,7 +5,7 @@ Measured on **iPhone 17 simulator (iOS 26.5)** with a Debug test host and a Rele
 | Gate | Target | Observed (sim) |
 | --- | --- | --- |
 | Decode + spatial index of full snapshot | ≤ ~3s device / soft ≤ 8s sim | ~0.9s (`PerformanceGateTests`) |
-| Indexed 80 m tap selection | ≤ ~50 ms | < 50 ms soft gate passed |
+| Indexed 30 m tap selection | ≤ ~50 ms | < 50 ms soft gate passed |
 | Package dependencies | none | none |
 | Renderer | SwiftUI `Map` + `MapPolyline` | **kept** (no MKMapView fallback) |
 
@@ -13,7 +13,8 @@ Physical-device Instruments pass was not completed in this environment because X
 
 Pinned snapshot:
 - `final_parking_map.geojson`
-- 15,870,101 bytes
-- SHA-256 `d985b98cafe6a44060e0fdbd50b21adcea1ca17e6590120a1a120dd372216cc7`
+- 30,495,169 bytes
+- SHA-256 `a8fc75d6284509281d75ee622c7773518580b014f4ccdac2a56585d00bdc0cf1`
 - pipeline rev `0a68237adf8b81d06b97717aa0883e50e0cdec99`
-- 21,424 line features + 9 skipped Points
+- 21,424 line features + 0 skipped Points
+- Overlay volume is roughly 14,227 LineString + 7,197 MultiLineString (~42k line parts). Keep the 8s decode / 50ms tap gates unless they fail on the curb snapshot.

@@ -58,12 +58,46 @@ enum CurbGeometry {
         }
     }
 
-    nonisolated static func geometryMidpoint(_ geometry: ParkingGeometry) -> LngLat? {
-        let parts = lineParts(geometry)
-        guard let primary = parts.first, !primary.isEmpty else { return nil }
-        let mid = primary[primary.count / 2]
+    nonisolated static func partMidpoint(_ coordinates: [[Double]]) -> LngLat? {
+        guard !coordinates.isEmpty else { return nil }
+        let mid = coordinates[coordinates.count / 2]
         guard mid.count >= 2 else { return nil }
         return LngLat(lng: mid[0], lat: mid[1])
+    }
+
+    nonisolated static func geometryMidpoint(_ geometry: ParkingGeometry) -> LngLat? {
+        partMidpoint(lineParts(geometry).first ?? [])
+    }
+
+    /// Midpoint of every line part (disjoint MLS uses more than part 0).
+    nonisolated static func geometryPartMidpoints(_ geometry: ParkingGeometry) -> [LngLat] {
+        lineParts(geometry).compactMap(partMidpoint)
+    }
+
+    /// Minimum distance between any parts of two geometries, not part 0 only.
+    nonisolated static func minDistanceBetweenGeometriesMeters(
+        _ a: ParkingGeometry,
+        _ b: ParkingGeometry
+    ) -> Double {
+        let partsA = lineParts(a)
+        let partsB = lineParts(b)
+        guard !partsA.isEmpty, !partsB.isEmpty else { return .infinity }
+        var minDist = Double.infinity
+        for partA in partsA {
+            guard let midA = partMidpoint(partA) else { continue }
+            for partB in partsB {
+                let d = distancePointToLineStringMeters(point: midA, coordinates: partB)
+                if d < minDist { minDist = d }
+            }
+        }
+        for partB in partsB {
+            guard let midB = partMidpoint(partB) else { continue }
+            for partA in partsA {
+                let d = distancePointToLineStringMeters(point: midB, coordinates: partA)
+                if d < minDist { minDist = d }
+            }
+        }
+        return minDist
     }
 
     nonisolated static func featureBBox(_ feature: ParkingFeature) -> BBox? {

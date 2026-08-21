@@ -32,14 +32,21 @@ struct VerdictSheet: View {
                             .frame(minHeight: 44)
 
                     case .zoomIn:
-                        Label("Zoom in to see curb rules", systemImage: "plus.magnifyingglass")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        Label(
+                            viewModel.sheetPrompt.coachingText
+                                ?? "Zoom in to see parking availability",
+                            systemImage: "plus.magnifyingglass"
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
                     case .tapPrompt:
-                        Label("Tap near a curb to check parking", systemImage: "hand.tap")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        Label(
+                            viewModel.sheetPrompt.coachingText ?? "Tap to find parking",
+                            systemImage: "hand.tap"
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
                     case .verdict:
                         if let verdict = viewModel.verdict {
@@ -64,8 +71,22 @@ struct VerdictSheet: View {
                 }
                 .padding()
             }
-            .navigationTitle(viewModel.timeChip)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .sheet(item: $viewModel.presentedModal) { modal in
+            switch modal {
+            case .location:
+                LocationSheet(viewModel: viewModel)
+            case .time:
+                TimeSheet(query: viewModel.appliedTimeQuery) { query in
+                    viewModel.applyTimeQuery(query)
+                }
+            }
+        }
+        .onChange(of: viewModel.presentedModal) { _, modal in
+            if modal == nil {
+                detent = .height(180)
+            }
         }
         .onAppear {
             if dynamicTypeSize.isAccessibilitySize, detent == .height(180) {
@@ -140,25 +161,28 @@ struct VerdictSheet: View {
 
     @ViewBuilder
     private func expandedContent(_ verdict: CurbVerdict) -> some View {
-        if let groups = viewModel.selection?.groups, groups.count > 1 {
+        let rows = viewModel.nearbyStreetRows
+        if rows.contains(where: { $0.sides.count > 0 }),
+           (viewModel.selection?.groups.count ?? 0) > 1
+        {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Nearby curb sides")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
-                Picker(
-                    "Curb side",
-                    selection: Binding(
-                        get: { viewModel.selection?.selectedGroupKey ?? groups[0].groupKey },
-                        set: { viewModel.selectGroup($0) }
-                    )
-                ) {
-                    ForEach(groups) { group in
-                        Text("\(group.street) · \(SideNormalization.sideAbbrev(group.side))")
-                            .tag(group.groupKey)
+                ForEach(rows) { row in
+                    HStack(spacing: 8) {
+                        Text(row.street)
+                            .font(.subheadline.weight(.bold))
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        HStack(spacing: 6) {
+                            ForEach(row.sides) { chip in
+                                sideChip(chip, street: row.street)
+                            }
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
-                .pickerStyle(.menu)
-                .frame(minHeight: 44)
             }
         }
 
@@ -170,11 +194,38 @@ struct VerdictSheet: View {
         }
     }
 
+    private func sideChip(_ chip: NearbySideChip, street: String) -> some View {
+        let selected = viewModel.selection?.selectedGroupKey == chip.groupKey
+        return Button {
+            viewModel.selectGroup(chip.groupKey)
+        } label: {
+            Text(chip.letter)
+                .font(.subheadline.weight(.black))
+                .foregroundStyle(chip.tone.color)
+                .frame(width: 44, height: 44)
+                .background(chip.tone.color.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(chip.tone.color.opacity(0.35), lineWidth: 1)
+                }
+                .overlay {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.primary, lineWidth: 2)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(chip.accessibilityLabel(street: street))
+        .accessibilityValue(chip.accessibilityValue)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
     private func dedupedRules(_ rules: [ContributingRule]) -> [ContributingRule] {
         var seen = Set<String>()
         var out: [ContributingRule] = []
         for rule in rules {
-            let key = rule.feature.ruleKey.rawValue
+            let key = ParkingLabels.ruleFeatureKey(rule.feature.properties)
             if seen.contains(key) { continue }
             seen.insert(key)
             out.append(rule)
@@ -256,7 +307,7 @@ struct VerdictSheet: View {
 
 private extension ParkingMapViewModel {
     static func preview(verdict: CurbVerdict) -> ParkingMapViewModel {
-        let vm = ParkingMapViewModel()
+        let vm = ParkingMapViewModel(startsClock: false)
         vm.loadState = .loaded(featureCount: 1, lineFeatureCount: 1, skippedPoints: 0)
         vm.curbVisible = true
         vm.verdict = verdict

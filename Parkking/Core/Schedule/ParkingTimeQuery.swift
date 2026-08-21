@@ -1,11 +1,11 @@
 import Foundation
 
-enum TimeMode: String, Sendable, Equatable {
+enum TimeMode: String, Sendable, Equatable, Hashable {
     case now
     case custom
 }
 
-enum DurationPreset: Sendable, Equatable {
+enum DurationPreset: Sendable, Equatable, Hashable {
     case minutes(Int)
     case custom
 }
@@ -64,6 +64,9 @@ enum ParkingTimeQuery {
         "Checked through midnight only; later rules were not evaluated."
     nonisolated static let torontoTimeZone =
         TimeZone(identifier: "America/Toronto") ?? .gmt
+    nonisolated static let durationPresets = [30, 60, 120, 180]
+    nonisolated static let minDurationMinutes = 1
+    nonisolated static let maxDurationMinutes = 720
 
     nonisolated static func createNowTimeQuery(
         durationMinutes: Int = 60,
@@ -194,6 +197,60 @@ enum ParkingTimeQuery {
             dayOfMonth: d,
             year: y
         )
+    }
+
+    nonisolated static func clampDuration(_ minutes: Int) -> Int {
+        min(maxDurationMinutes, max(minDurationMinutes, minutes))
+    }
+
+    nonisolated static func preset(for minutes: Int) -> DurationPreset {
+        durationPresets.contains(minutes) ? .minutes(minutes) : .custom
+    }
+
+    nonisolated static func date(
+        fromTorontoDateString value: String,
+        minuteOfDay: Int,
+        timeZone: TimeZone = torontoTimeZone
+    ) -> Date {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        var components = DateComponents()
+        components.year = parts.count > 0 ? parts[0] : 1970
+        components.month = parts.count > 1 ? parts[1] : 1
+        components.day = parts.count > 2 ? parts[2] : 1
+        components.hour = minuteOfDay / 60
+        components.minute = minuteOfDay % 60
+        components.second = 0
+        return calendar.date(from: components) ?? Date()
+    }
+
+    nonisolated static func torontoDateString(
+        from date: Date,
+        timeZone: TimeZone = torontoTimeZone
+    ) -> String {
+        slotToDateString(slotFromDate(date, timeZone: timeZone))
+    }
+
+    nonisolated static func minuteOfDay(
+        from date: Date,
+        timeZone: TimeZone = torontoTimeZone
+    ) -> Int {
+        slotFromDate(date, timeZone: timeZone).minuteOfDay
+    }
+
+    nonisolated static func draftCrossesMidnight(
+        _ query: TimeQuery,
+        now: Date = Date(),
+        timeZone: TimeZone = torontoTimeZone
+    ) -> Bool {
+        let start: Int
+        if query.mode == .now {
+            start = slotFromDate(now, timeZone: timeZone).minuteOfDay
+        } else {
+            start = query.startMinute
+        }
+        return start + query.requestedDurationMinutes > midnightMinute
     }
 
     nonisolated static func formatSlotLabel(

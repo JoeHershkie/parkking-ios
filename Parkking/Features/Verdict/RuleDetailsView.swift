@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RuleDetailsView: View {
     var rules: [ContributingRule]
+    @State private var copyController = BylawCopyController()
 
     var body: some View {
         if rules.isEmpty {
@@ -53,9 +54,30 @@ struct RuleDetailsView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Bylaw text")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Bylaw text")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    let copyKey = rule.feature.ruleKey.rawValue
+                    Button {
+                        copyController.copy(props.rule, key: copyKey)
+                    } label: {
+                        Label(
+                            copyController.title(for: copyKey),
+                            systemImage: copyController.copiedKey == copyKey
+                                ? "checkmark"
+                                : "doc.on.doc"
+                        )
+                        .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel(copyController.title(for: copyKey))
+                    .accessibilityValue(
+                        copyController.copiedKey == copyKey ? "Copied to clipboard" : "Copy bylaw text"
+                    )
+                }
                 Text("“\(props.rule)”")
                     .font(.caption.italic())
                     .padding(8)

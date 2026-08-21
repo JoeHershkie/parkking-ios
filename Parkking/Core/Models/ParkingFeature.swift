@@ -1,11 +1,22 @@
 import Foundation
 
-/// Snapshot-local feature identity assigned by decode order.
+/// Snapshot-local feature identity from `_id`, or `idx:<n>` when `_id` is missing.
 struct FeatureID: Hashable, Codable, Sendable, Comparable {
-    let rawValue: Int
+    let rawValue: String
+
+    nonisolated init(_ rawValue: String) {
+        self.rawValue = rawValue
+    }
 
     nonisolated init(_ rawValue: Int) {
-        self.rawValue = rawValue
+        self.rawValue = String(rawValue)
+    }
+
+    nonisolated static func fromSourceID(_ sourceID: String?, index: Int) -> FeatureID {
+        if let sourceID, !sourceID.isEmpty {
+            return FeatureID(sourceID)
+        }
+        return FeatureID("idx:\(index)")
     }
 
     nonisolated static func < (lhs: FeatureID, rhs: FeatureID) -> Bool {
@@ -60,6 +71,19 @@ struct ParkingProperties: Sendable, Equatable, Codable {
     var maxMinutes: Int?
     var disjointBlock: Bool?
 
+    var sourceID: String?
+    var sideMode: String?
+    var curbGeometryMethod: String?
+    var curbConfidence: Double?
+    var curbCoverage: Double?
+    var medianOffsetM: Double?
+    var curbOverride: Bool?
+    var curbWarnings: [String]?
+    var centrelineIDs: [Int]?
+    var roadEdgeObjectIDs: [Int]?
+    var centrelineConstruction: String?
+    var mergeDroppedComponent: Bool?
+
     // Client-only enrichment fields
     var polarity: FilterPolarity?
     var visible: Bool?
@@ -78,6 +102,18 @@ struct ParkingProperties: Sendable, Equatable, Codable {
         case schedule
         case maxMinutes
         case disjointBlock = "disjoint_block"
+        case sourceID = "_id"
+        case sideMode = "side_mode"
+        case curbGeometryMethod = "curb_geometry_method"
+        case curbConfidence = "curb_confidence"
+        case curbCoverage = "curb_coverage"
+        case medianOffsetM = "median_offset_m"
+        case curbOverride = "curb_override"
+        case curbWarnings = "curb_warnings"
+        case centrelineIDs = "centreline_ids"
+        case roadEdgeObjectIDs = "road_edge_object_ids"
+        case centrelineConstruction = "centreline_construction"
+        case mergeDroppedComponent = "merge_dropped_component"
         case polarity = "_polarity"
         case visible = "_visible"
         case unparsed = "_unparsed"
@@ -96,6 +132,18 @@ struct ParkingProperties: Sendable, Equatable, Codable {
         schedule: Schedule? = nil,
         maxMinutes: Int? = nil,
         disjointBlock: Bool? = nil,
+        sourceID: String? = nil,
+        sideMode: String? = nil,
+        curbGeometryMethod: String? = nil,
+        curbConfidence: Double? = nil,
+        curbCoverage: Double? = nil,
+        medianOffsetM: Double? = nil,
+        curbOverride: Bool? = nil,
+        curbWarnings: [String]? = nil,
+        centrelineIDs: [Int]? = nil,
+        roadEdgeObjectIDs: [Int]? = nil,
+        centrelineConstruction: String? = nil,
+        mergeDroppedComponent: Bool? = nil,
         polarity: FilterPolarity? = nil,
         visible: Bool? = nil,
         unparsed: Bool? = nil,
@@ -112,6 +160,18 @@ struct ParkingProperties: Sendable, Equatable, Codable {
         self.schedule = schedule
         self.maxMinutes = maxMinutes
         self.disjointBlock = disjointBlock
+        self.sourceID = sourceID
+        self.sideMode = sideMode
+        self.curbGeometryMethod = curbGeometryMethod
+        self.curbConfidence = curbConfidence
+        self.curbCoverage = curbCoverage
+        self.medianOffsetM = medianOffsetM
+        self.curbOverride = curbOverride
+        self.curbWarnings = curbWarnings
+        self.centrelineIDs = centrelineIDs
+        self.roadEdgeObjectIDs = roadEdgeObjectIDs
+        self.centrelineConstruction = centrelineConstruction
+        self.mergeDroppedComponent = mergeDroppedComponent
         self.polarity = polarity
         self.visible = visible
         self.unparsed = unparsed
@@ -119,6 +179,13 @@ struct ParkingProperties: Sendable, Equatable, Codable {
         self.failed = failed
         self.featureKey = featureKey
         self.severity = severity
+    }
+
+    /// Dimmed overlay for unresolved / ambiguous curb placement; never hidden.
+    nonisolated var hasUncertainCurbPlacement: Bool {
+        if curbGeometryMethod == "centerline_unresolved" { return true }
+        let warnings = curbWarnings ?? []
+        return warnings.contains("SIDE_AMBIGUOUS") || warnings.contains("CENTERLINE_FALLBACK")
     }
 }
 

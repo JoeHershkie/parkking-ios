@@ -33,8 +33,12 @@ enum ParkingLabels {
     }
 
     /// Stable source-derived key for highlight/selection across updates.
+    /// Prefers `_id` so a Both MultiLineString stays one rule.
     nonisolated static func ruleFeatureKey(_ props: ParkingProperties) -> String {
-        [
+        if let sourceID = props.sourceID, !sourceID.isEmpty {
+            return sourceID
+        }
+        return [
             props.highway,
             props.rule,
             props.side,

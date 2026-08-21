@@ -65,8 +65,8 @@ struct ParkingSpatialIndexTests {
         #expect(index.allFeatures().count == 2)
     }
 
-    @Test("indexed vs brute force tap parity within 80m")
-    func indexedVsBruteForceTapParityWithin80m() {
+    @Test("indexed vs brute force tap parity within tap radius")
+    func indexedVsBruteForceTapParityWithinTapRadius() {
         // Dense cluster near the tap plus a far decoy outside the search pad.
         var features: [ParkingFeature] = []
         for i in 0..<12 {
@@ -105,8 +105,9 @@ struct ParkingSpatialIndexTests {
         let collection = ParkingFeatureCollection(features: features)
         let index = ParkingSpatialIndex(collection: collection)
         let point = LngLat(lng: -79.4005, lat: 43.65005)
+        let radius = CurbSelection.tapMaxDistanceMeters
 
-        let padDeg = CurbGeometry.degreesPad(forMeters: 80, atLatitude: point.lat)
+        let padDeg = CurbGeometry.degreesPad(forMeters: radius, atLatitude: point.lat)
         let bbox = BBox(
             minLng: point.lng,
             minLat: point.lat,
@@ -117,12 +118,12 @@ struct ParkingSpatialIndexTests {
         let indexedCandidates = CurbSelection.findNearestCurbCandidates(
             features: indexedSubset,
             point: point,
-            maxDistanceMeters: 80
+            maxDistanceMeters: radius
         )
         let bruteCandidates = CurbSelection.findNearestCurbCandidates(
             features: features,
             point: point,
-            maxDistanceMeters: 80
+            maxDistanceMeters: radius
         )
 
         #expect(indexedCandidates.count == bruteCandidates.count)

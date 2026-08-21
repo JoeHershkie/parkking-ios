@@ -77,10 +77,15 @@ struct SelectionResult: Sendable, Equatable {
 }
 
 enum CurbSelection {
+    /// Opposite curbs are typically ~8–15 m apart; keep taps on the nearer line.
+    nonisolated static let tapMaxDistanceMeters: Double = 30
+    /// Along-street grouping of the same curb side around the tap.
+    nonisolated static let localClusterMeters: Double = 120
+
     nonisolated static func findNearestCurbCandidates(
         features: [ParkingFeature],
         point: LngLat,
-        maxDistanceMeters: Double = 80,
+        maxDistanceMeters: Double = CurbSelection.tapMaxDistanceMeters,
         maxCandidates: Int = 40
     ) -> [CurbCandidate] {
         var scored: [CurbCandidate] = []
@@ -111,7 +116,7 @@ enum CurbSelection {
 
     nonisolated static func groupLocalCurbSides(
         candidates: [CurbCandidate],
-        localClusterMeters: Double = 120
+        localClusterMeters: Double = CurbSelection.localClusterMeters
     ) -> [CurbSideGroup] {
         guard !candidates.isEmpty else { return [] }
 
@@ -135,7 +140,7 @@ enum CurbSelection {
             var ids: [FeatureID] = []
             // Keep all geometry IDs for highlight, but dedupe rules by key for verdict details.
             var geometryIDs: [FeatureID] = []
-            var geometrySeen = Set<Int>()
+            var geometrySeen = Set<String>()
             for m in use {
                 if !geometrySeen.contains(m.feature.id.rawValue) {
                     geometrySeen.insert(m.feature.id.rawValue)
@@ -172,17 +177,14 @@ enum CurbSelection {
         _ b: ParkingFeature,
         maxMeters: Double
     ) -> Bool {
-        guard let midA = CurbGeometry.geometryMidpoint(a.geometry),
-              let midB = CurbGeometry.geometryMidpoint(b.geometry)
-        else { return false }
-        return CurbGeometry.haversineMeters(midA, midB) <= maxMeters
+        CurbGeometry.minDistanceBetweenGeometriesMeters(a.geometry, b.geometry) <= maxMeters
     }
 
     nonisolated static func selectNearestCurb(
         features: [ParkingFeature],
         point: LngLat,
-        maxDistanceMeters: Double = 80,
-        localClusterMeters: Double = 120,
+        maxDistanceMeters: Double = CurbSelection.tapMaxDistanceMeters,
+        localClusterMeters: Double = CurbSelection.localClusterMeters,
         preferredGroupKey: String? = nil
     ) -> SelectionResult {
         let candidates = findNearestCurbCandidates(
