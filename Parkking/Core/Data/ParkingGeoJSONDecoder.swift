@@ -93,11 +93,7 @@ enum ParkingGeoJSONDecoder {
 
         var schedule: Schedule?
         if let scheduleObj = obj["schedule"] as? [String: Any] {
-            if let data = try? JSONSerialization.data(withJSONObject: scheduleObj),
-               let decoded = try? JSONDecoder().decode(Schedule.self, from: data)
-            {
-                schedule = decoded
-            }
+            schedule = Schedule(dictionary: scheduleObj)
         }
 
         return ParkingProperties(

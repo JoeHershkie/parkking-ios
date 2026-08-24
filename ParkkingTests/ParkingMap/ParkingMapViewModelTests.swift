@@ -141,4 +141,52 @@ struct ParkingMapViewModelTests {
         vm.loadState = .failed("boom")
         #expect(vm.sheetPrompt == .failed("boom"))
     }
+
+    @Test("tap and selectGroup do not rebuild the viewport")
+    func tapAndSelectGroupSkipViewportRebuild() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+        let generation = vm.viewportGeneration
+
+        vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.viewportGeneration == generation)
+        #expect(vm.selectedFeatureIDs.isEmpty == false)
+
+        if let other = vm.nearbyStreetRows.flatMap(\.sides).first(where: {
+            $0.groupKey != vm.selection?.selectedGroupKey
+        }) {
+            vm.selectGroup(other.groupKey)
+            #expect(vm.viewportGeneration == generation)
+            #expect(vm.selectedFeatureIDs.isEmpty == false)
+        }
+    }
+
+    @Test("search fly-to sets a pending camera region")
+    func searchSetsPendingCameraRegion() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+        let accepted = vm.selectSearchResult(
+            label: "City Hall",
+            coordinate: ParkingMapTestFixtures.queenNorth,
+            source: .search
+        )
+        #expect(accepted)
+        #expect(vm.pendingCameraRegion != nil)
+        #expect(vm.lastFlownRegion != nil)
+    }
+
+    @Test("tapping the opposite curb side replaces the selection")
+    func tappingOppositeSideReplacesSelection() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+        vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
+        let firstSide = vm.selection?.selected?.side
+        #expect(firstSide != nil)
+
+        vm.handleTap(at: ParkingMapTestFixtures.queenSouth)
+        #expect(vm.selection?.selected?.side != firstSide)
+        #expect(vm.selectedFeatureIDs.count == 1)
+    }
 }

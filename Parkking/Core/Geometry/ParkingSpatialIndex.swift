@@ -172,7 +172,12 @@ final class ParkingSpatialIndex: @unchecked Sendable {
                 unparsed: evaluation.unparsed
             )
             enriched.append(
-                ParkingFeature(id: feature.id, geometry: feature.geometry, properties: props)
+                ParkingFeature(
+                    id: feature.id,
+                    geometry: feature.geometry,
+                    properties: props,
+                    coordinateParts: feature.coordinateParts
+                )
             )
         }
 

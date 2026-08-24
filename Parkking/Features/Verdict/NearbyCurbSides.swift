@@ -84,7 +84,7 @@ enum NearbyCurbSides {
 
         for group in groups {
             let verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
-                features: group.features,
+                features: group.verdictFeatures,
                 resolved: resolved,
                 street: group.street,
                 side: group.side,

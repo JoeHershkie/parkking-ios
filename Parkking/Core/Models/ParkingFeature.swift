@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 /// Snapshot-local feature identity from `_id`, or `idx:<n>` when `_id` is missing.
@@ -193,11 +194,22 @@ struct ParkingFeature: Sendable, Equatable, Identifiable {
     var id: FeatureID
     var geometry: ParkingGeometry
     var properties: ParkingProperties
+    var coordinateParts: [[CLLocationCoordinate2D]]
 
-    nonisolated init(id: FeatureID, geometry: ParkingGeometry, properties: ParkingProperties) {
+    nonisolated init(
+        id: FeatureID,
+        geometry: ParkingGeometry,
+        properties: ParkingProperties,
+        coordinateParts: [[CLLocationCoordinate2D]]? = nil
+    ) {
         self.id = id
         self.geometry = geometry
         self.properties = properties
+        self.coordinateParts = coordinateParts ?? CurbGeometry.mapCoordinateParts(geometry)
+    }
+
+    nonisolated static func == (lhs: ParkingFeature, rhs: ParkingFeature) -> Bool {
+        lhs.id == rhs.id && lhs.geometry == rhs.geometry && lhs.properties == rhs.properties
     }
 
     nonisolated var ruleKey: RuleKey {

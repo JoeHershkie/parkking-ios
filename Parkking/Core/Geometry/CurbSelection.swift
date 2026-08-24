@@ -37,6 +37,8 @@ struct CurbSideGroup: Sendable, Equatable, Identifiable {
     var features: [ParkingFeature]
     var featureKeys: [String]
     var featureIDs: [FeatureID]
+    /// Map highlight only: the nearest feature to the tap, not the full 120 m cluster.
+    var highlightFeatureIDs: [FeatureID]
     var nearestDistanceMeters: Double
 
     nonisolated init(
@@ -47,7 +49,8 @@ struct CurbSideGroup: Sendable, Equatable, Identifiable {
         features: [ParkingFeature],
         featureKeys: [String],
         featureIDs: [FeatureID],
-        nearestDistanceMeters: Double
+        nearestDistanceMeters: Double,
+        highlightFeatureIDs: [FeatureID]? = nil
     ) {
         self.groupKey = groupKey
         self.street = street
@@ -56,7 +59,18 @@ struct CurbSideGroup: Sendable, Equatable, Identifiable {
         self.features = features
         self.featureKeys = featureKeys
         self.featureIDs = featureIDs
+        self.highlightFeatureIDs = highlightFeatureIDs ?? featureIDs
         self.nearestDistanceMeters = nearestDistanceMeters
+    }
+
+    /// Rules for the highlighted segment only. Adjacent clustered segments stay out of the card.
+    /// Same-geometry stacked signs still compose together.
+    var verdictFeatures: [ParkingFeature] {
+        let ids = Set(highlightFeatureIDs)
+        guard let primary = features.first(where: { ids.contains($0.id) }) ?? features.first else {
+            return []
+        }
+        return features.filter { ids.contains($0.id) || $0.geometry == primary.geometry }
     }
 }
 
@@ -163,7 +177,8 @@ enum CurbSelection {
                     features: deduped,
                     featureKeys: keys,
                     featureIDs: geometryIDs,
-                    nearestDistanceMeters: nearest.distanceMeters
+                    nearestDistanceMeters: nearest.distanceMeters,
+                    highlightFeatureIDs: [nearest.feature.id]
                 )
             )
         }
@@ -201,9 +216,11 @@ enum CurbSelection {
             return SelectionResult(groups: [], selectedGroupKey: nil, selected: nil)
         }
 
-        let selected =
-            (preferredGroupKey.flatMap { key in groups.first(where: { $0.groupKey == key }) })
-            ?? groups[0]
+        let nearestKey = groups[0].groupKey
+        let preferredHit = preferredGroupKey.flatMap { key in
+            groups.first(where: { $0.groupKey == key })
+        }
+        let selected = preferredHit ?? groups[0]
 
         return SelectionResult(
             groups: groups,

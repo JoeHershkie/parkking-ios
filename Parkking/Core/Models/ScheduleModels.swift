@@ -330,3 +330,139 @@ extension Schedule: Codable {
         try container.encodeIfPresent(unparsedClauses, forKey: .unparsedClauses)
     }
 }
+
+// MARK: - Dictionary decoding (GeoJSON walk, no JSON round-trip)
+
+extension Schedule {
+    nonisolated init?(dictionary obj: [String: Any]) {
+        self.init(
+            v: ScheduleJSON.intValue(obj["v"]) ?? 1,
+            status: ScheduleStatus(raw: ScheduleJSON.stringValue(obj["status"])),
+            source: ScheduleJSON.stringValue(obj["source"]) ?? "",
+            windows: ScheduleJSON.timeWindows(obj["windows"]),
+            calendar: ScheduleJSON.calendar(obj["calendar"]),
+            flags: ScheduleJSON.flags(obj["flags"]),
+            inverted: ScheduleJSON.boolValue(obj["inverted"]),
+            unparsedClauses: ScheduleJSON.stringList(obj["unparsedClauses"])
+        )
+    }
+}
+
+private enum ScheduleJSON {
+    nonisolated static func stringValue(_ any: Any?) -> String? {
+        if let s = any as? String { return s }
+        if any is NSNull { return nil }
+        if let n = any as? NSNumber { return n.stringValue }
+        return nil
+    }
+
+    nonisolated static func intValue(_ any: Any?) -> Int? {
+        if let i = any as? Int { return i }
+        if let d = any as? Double { return Int(d.rounded()) }
+        if let n = any as? NSNumber { return n.intValue }
+        if let s = any as? String, let d = Double(s) { return Int(d.rounded()) }
+        return nil
+    }
+
+    nonisolated static func boolValue(_ any: Any?) -> Bool? {
+        if any is NSNull || any == nil { return nil }
+        if let b = any as? Bool { return b }
+        if let n = any as? NSNumber { return n.boolValue }
+        if let s = any as? String {
+            let lower = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["true", "1", "yes"].contains(lower) { return true }
+            if ["false", "0", "no"].contains(lower) { return false }
+        }
+        return nil
+    }
+
+    nonisolated static func stringList(_ any: Any?) -> [String]? {
+        if any is NSNull || any == nil { return nil }
+        if let arr = any as? [Any] {
+            return arr.compactMap { stringValue($0) }
+        }
+        return nil
+    }
+
+    nonisolated static func intList(_ any: Any?) -> [Int]? {
+        if any is NSNull || any == nil { return nil }
+        if let arr = any as? [Any] {
+            return arr.compactMap { intValue($0) }
+        }
+        return nil
+    }
+
+    nonisolated static func timeWindows(_ any: Any?) -> [TimeWindow] {
+        guard let arr = any as? [Any] else { return [] }
+        return arr.compactMap { item in
+            guard let obj = item as? [String: Any] else { return nil }
+            return timeWindow(obj)
+        }
+    }
+
+    nonisolated static func timeWindow(_ obj: [String: Any]) -> TimeWindow? {
+        guard let days = intList(obj["days"]),
+              let startMinute = intValue(obj["startMinute"]),
+              let endMinute = intValue(obj["endMinute"])
+        else { return nil }
+        return TimeWindow(
+            days: days,
+            startMinute: startMinute,
+            endMinute: endMinute,
+            crossesMidnight: boolValue(obj["crossesMidnight"]),
+            calendar: calendar(obj["calendar"])
+        )
+    }
+
+    nonisolated static func calendar(_ any: Any?) -> ScheduleCalendar? {
+        guard let obj = any as? [String: Any] else { return nil }
+        return ScheduleCalendar(
+            monthRanges: monthRanges(obj["monthRanges"]),
+            dayOfMonthRanges: dayOfMonthRanges(obj["dayOfMonthRanges"]),
+            months: intList(obj["months"])
+        )
+    }
+
+    nonisolated static func monthRanges(_ any: Any?) -> [CalendarMonthRange]? {
+        guard let arr = any as? [Any] else { return nil }
+        let ranges: [CalendarMonthRange] = arr.compactMap { item in
+            guard let obj = item as? [String: Any],
+                  let startMonth = intValue(obj["startMonth"]),
+                  let startDay = intValue(obj["startDay"]),
+                  let endMonth = intValue(obj["endMonth"]),
+                  let endDay = intValue(obj["endDay"])
+            else { return nil }
+            return CalendarMonthRange(
+                startMonth: startMonth,
+                startDay: startDay,
+                endMonth: endMonth,
+                endDay: endDay
+            )
+        }
+        return ranges
+    }
+
+    nonisolated static func dayOfMonthRanges(_ any: Any?) -> [CalendarDayOfMonthRange]? {
+        guard let arr = any as? [Any] else { return nil }
+        let ranges: [CalendarDayOfMonthRange] = arr.compactMap { item in
+            guard let obj = item as? [String: Any],
+                  let start = intValue(obj["start"])
+            else { return nil }
+            let end: DayOfMonthEnd
+            if let endInt = intValue(obj["end"]) {
+                end = .day(endInt)
+            } else if let endString = stringValue(obj["end"]), endString == "last" {
+                end = .last
+            } else {
+                return nil
+            }
+            return CalendarDayOfMonthRange(start: start, end: end)
+        }
+        return ranges
+    }
+
+    nonisolated static func flags(_ any: Any?) -> ScheduleFlags? {
+        guard let obj = any as? [String: Any] else { return nil }
+        return ScheduleFlags(exceptPublicHolidays: boolValue(obj["exceptPublicHolidays"]))
+    }
+}

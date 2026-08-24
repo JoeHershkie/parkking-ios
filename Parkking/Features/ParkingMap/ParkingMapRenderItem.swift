@@ -1,7 +1,6 @@
 import CoreLocation
 import Foundation
 import MapKit
-import SwiftUI
 
 struct ParkingMapRenderItem: Identifiable, Sendable, Equatable {
     struct ID: Hashable, Sendable {
@@ -50,6 +49,21 @@ enum ParkingMapConstants {
         longitude: -79.38
     )
 
+    nonisolated static let citySpan = MKCoordinateSpan(
+        latitudeDelta: 0.08,
+        longitudeDelta: 0.08
+    )
+
+    nonisolated static let cityRegion = MKCoordinateRegion(
+        center: torontoCenter,
+        span: citySpan
+    )
+
+    nonisolated static let minCameraDistance: CLLocationDistance = 200
+    nonisolated static let maxCameraDistance: CLLocationDistance = 80_000
+    nonisolated static let chromeTopMargin: CGFloat = 88
+    nonisolated static let chromeBottomMargin: CGFloat = 196
+
     /// Approximate MapLibre zoom 14.5 gate as max visible map width.
     nonisolated static let curbVisibleMaxWidthMeters: CLLocationDistance = 1_200
 
@@ -70,12 +84,6 @@ enum ParkingMapConstants {
     nonisolated static let neighborhoodSpan = MKCoordinateSpan(
         latitudeDelta: 0.004,
         longitudeDelta: 0.006
-    )
-
-    nonisolated static let torontoBounds = MapCameraBounds(
-        centerCoordinateBounds: parkingCoverageRegion,
-        minimumDistance: 200,
-        maximumDistance: 80_000
     )
 
     nonisolated static func neighborhoodRegion(

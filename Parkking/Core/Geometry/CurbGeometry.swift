@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 struct LngLat: Sendable, Hashable, Equatable {
@@ -34,6 +35,17 @@ enum CurbGeometry {
             return [coordinates]
         case .multiLineString(let coordinates):
             return coordinates
+        }
+    }
+
+    /// MapKit coordinates for each line part, computed once at feature construction.
+    nonisolated static func mapCoordinateParts(_ geometry: ParkingGeometry) -> [[CLLocationCoordinate2D]] {
+        lineParts(geometry).compactMap { part in
+            let coords: [CLLocationCoordinate2D] = part.compactMap { pair in
+                guard pair.count >= 2 else { return nil }
+                return CLLocationCoordinate2D(latitude: pair[1], longitude: pair[0])
+            }
+            return coords.count >= 2 ? coords : nil
         }
     }
 

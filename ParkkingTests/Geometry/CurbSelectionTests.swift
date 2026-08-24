@@ -126,6 +126,34 @@ struct CurbSelectionTests {
         #expect(north!.features.contains { $0.properties.rule == "far rule" } == false)
     }
 
+    @Test("highlight IDs include only the nearest clustered feature")
+    func highlightIDsAreNearestFeatureOnly() {
+        let closer = line(
+            street: "Shallmar Blvd",
+            side: "North",
+            coords: [[-79.4, 43.65], [-79.4005, 43.65]],
+            rule: "closer",
+            id: 0,
+            sourceID: "3528"
+        )
+        let adjacent = line(
+            street: "Shallmar Blvd",
+            side: "North",
+            coords: [[-79.4005, 43.65], [-79.401, 43.65]],
+            rule: "adjacent",
+            id: 1,
+            sourceID: "14704"
+        )
+        let result = CurbSelection.selectNearestCurb(
+            features: [closer, adjacent],
+            point: LngLat(lng: -79.4001, lat: 43.65002)
+        )
+        #expect(result.selected?.featureIDs.count == 2)
+        #expect(result.selected?.highlightFeatureIDs == [closer.id])
+        #expect(result.selected?.verdictFeatures.map(\.id) == [closer.id])
+        #expect(result.selected?.features.count == 2)
+    }
+
     @Test("auto-selects nearest group and supports preferred key")
     func autoSelectsNearestGroupAndSupportsPreferredKey() {
         let nearNorth = line(

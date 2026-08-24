@@ -40,9 +40,17 @@ actor ParkingDataStore {
     private(set) var state: ParkingDataLoadState = .idle
     private(set) var dataset: ParkingDataset?
 
+    nonisolated static var validatesHashByDefault: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
     func loadBundled(
         bundle: Bundle = .main,
-        validateHash: Bool = true
+        validateHash: Bool = ParkingDataStore.validatesHashByDefault
     ) async throws -> ParkingDataset {
         state = .loading
         do {
@@ -67,10 +75,14 @@ actor ParkingDataStore {
         let manifest = try ParkingDataManifest.load(from: bundle)
         let url = try resourceURL(named: manifest.filename, bundle: bundle)
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-
-        if validateHash, digest != manifest.sha256 {
-            throw ParkingDataError.hashMismatch(expected: manifest.sha256, actual: digest)
+        let digest: String
+        if validateHash {
+            digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            if digest != manifest.sha256 {
+                throw ParkingDataError.hashMismatch(expected: manifest.sha256, actual: digest)
+            }
+        } else {
+            digest = manifest.sha256
         }
 
         let decoded = try ParkingGeoJSONDecoder.decode(data)

@@ -228,6 +228,37 @@ struct ParkingDataContractTests {
         #expect(decoded.features[1].properties.hasUncertainCurbPlacement)
     }
 
+    @Test("Schedule dictionary init matches JSONDecoder including last day-of-month")
+    func scheduleDictionaryMatchesJSONDecoder() throws {
+        let object: [String: Any] = [
+            "v": 1,
+            "status": "ok",
+            "source": "Mon-Fri 8am-6pm except holidays",
+            "windows": [
+                [
+                    "days": [1, 2, 3, 4, 5],
+                    "startMinute": 480,
+                    "endMinute": 1080,
+                    "crossesMidnight": false,
+                    "calendar": [
+                        "dayOfMonthRanges": [
+                            ["start": 1, "end": "last"],
+                        ],
+                    ],
+                ],
+            ],
+            "flags": ["exceptPublicHolidays": true],
+            "inverted": false,
+            "unparsedClauses": [] as [String],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Schedule.self, from: data)
+        let fromDictionary = try #require(Schedule(dictionary: object))
+        #expect(fromDictionary == decoded)
+        #expect(fromDictionary.windows[0].calendar?.dayOfMonthRanges?.first?.end == .last)
+        #expect(fromDictionary.flags?.exceptPublicHolidays == true)
+    }
+
     private func sampleFixtureURL() -> URL? {
         let candidates = [
             Bundle(for: BundleToken.self).url(

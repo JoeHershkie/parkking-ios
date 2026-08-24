@@ -2,7 +2,6 @@ import CoreLocation
 import Foundation
 import MapKit
 import Observation
-import SwiftUI
 import UIKit
 
 enum MapModal: String, Identifiable, Equatable {
@@ -41,12 +40,8 @@ final class ParkingMapViewModel {
         }
     }
 
-    var cameraPosition: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: ParkingMapConstants.torontoCenter,
-            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-        )
-    )
+    var pendingCameraRegion: MKCoordinateRegion?
+    var selectedFeatureIDs: Set<String> = []
 
     var loadState: ParkingDataLoadState = .idle
     var renderItems: [ParkingMapRenderItem] = []
@@ -73,7 +68,7 @@ final class ParkingMapViewModel {
     private let startsClock: Bool
     private let openURL: (URL) -> Void
     private var dataset: ParkingDataset?
-    private var viewportGeneration = 0
+    private(set) var viewportGeneration = 0
     private var clockTask: Task<Void, Never>?
     private var visibleRegion: MKCoordinateRegion?
     private var didAutoLocateThisLaunch = false
@@ -130,8 +125,8 @@ final class ParkingMapViewModel {
 
     func onAppear() {
         if ProcessInfo.processInfo.arguments.contains("-demoNeighborhood") {
-            cameraPosition = .region(
-                ParkingMapConstants.neighborhoodRegion(around: ParkingMapConstants.torontoCenter)
+            pendingCameraRegion = ParkingMapConstants.neighborhoodRegion(
+                around: ParkingMapConstants.torontoCenter
             )
             curbVisible = true
         }
@@ -170,10 +165,6 @@ final class ParkingMapViewModel {
         clockTask = nil
     }
 
-    func handleCameraChange(_ context: MapCameraUpdateContext) {
-        Task { await handleRegionChange(context.region) }
-    }
-
     func handleRegionChange(_ region: MKCoordinateRegion) async {
         visibleRegion = region
         curbVisible = ParkingMapConstants.visibleWidthMeters(region)
@@ -196,10 +187,8 @@ final class ParkingMapViewModel {
         if let street = group.street as String? {
             locationLabel = street
         }
+        syncSelectedFeatureIDs()
         recomputeVerdict()
-        if let region = visibleRegion {
-            Task { await refreshViewport(region: region) }
-        }
     }
 
     @discardableResult
@@ -303,7 +292,7 @@ final class ParkingMapViewModel {
 
         if fly {
             let region = ParkingMapConstants.neighborhoodRegion(around: coordinate)
-            cameraPosition = .region(region)
+            pendingCameraRegion = region
             lastFlownRegion = region
             visibleRegion = region
             curbVisible = true
@@ -311,7 +300,6 @@ final class ParkingMapViewModel {
 
         guard let dataset else { return }
         let point = LngLat(lng: coordinate.longitude, lat: coordinate.latitude)
-        let preferred = selection?.selectedGroupKey
         let padDeg = CurbGeometry.degreesPad(
             forMeters: CurbSelection.tapMaxDistanceMeters,
             atLatitude: point.lat
@@ -320,10 +308,12 @@ final class ParkingMapViewModel {
             BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
             padDeg: padDeg
         )
+        // Map taps always pick the geometrically nearest group. `preferredGroupKey` is
+        // only for the nearby-sides sheet (`selectGroup`), where the user already chose a side.
         let result = CurbSelection.selectNearestCurb(
             features: subset,
             point: point,
-            preferredGroupKey: preferred
+            preferredGroupKey: nil
         )
 
         lastSelectionSource = source
@@ -340,10 +330,15 @@ final class ParkingMapViewModel {
             recents = recentsStore.add(label: label, coordinate: coordinate)
         }
 
+        syncSelectedFeatureIDs()
         recomputeVerdict()
-        if let region = visibleRegion {
+        if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
         }
+    }
+
+    private func syncSelectedFeatureIDs() {
+        selectedFeatureIDs = Set(selection?.selected?.highlightFeatureIDs.map(\.rawValue) ?? [])
     }
 
     private func install(_ dataset: ParkingDataset) {
@@ -420,8 +415,9 @@ final class ParkingMapViewModel {
             }
             return
         }
+        let verdictFeatures = selected.verdictFeatures
         verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
-            features: selected.features,
+            features: verdictFeatures,
             resolved: resolved,
             street: selected.street,
             side: selected.side,
@@ -458,11 +454,11 @@ final class ParkingMapViewModel {
 
     private func refreshViewport(region: MKCoordinateRegion) async {
         guard let dataset, let resolved = resolvedQuery else {
-            renderItems = []
+            if !renderItems.isEmpty { renderItems = [] }
             return
         }
         guard curbVisible else {
-            renderItems = []
+            if !renderItems.isEmpty { renderItems = [] }
             return
         }
 
@@ -474,7 +470,6 @@ final class ParkingMapViewModel {
             maxLng: region.center.longitude + region.span.longitudeDelta / 2,
             maxLat: region.center.latitude + region.span.latitudeDelta / 2
         )
-        let selectedIDs = Set(selection?.selected?.featureIDs.map(\.rawValue) ?? [])
         let index = dataset.index
 
         let items: [ParkingMapRenderItem] = await Task.detached(priority: .userInitiated) {
@@ -493,37 +488,30 @@ final class ParkingMapViewModel {
                         polarity: polarity,
                         unparsed: feature.properties.unparsed
                     )
-                    let selected = selectedIDs.contains(feature.id.rawValue)
-                    let uncertain = feature.properties.hasUncertainCurbPlacement
-                    let parts = CurbGeometry.lineParts(feature.geometry)
-                    for (partIndex, part) in parts.enumerated() {
-                        let coords: [CLLocationCoordinate2D] = part.compactMap { pair in
-                            guard pair.count >= 2 else { return nil }
-                            return CLLocationCoordinate2D(latitude: pair[1], longitude: pair[0])
-                        }
-                        guard coords.count >= 2 else { continue }
-                        renders.append(
-                            ParkingMapRenderItem(
-                                featureID: feature.id,
-                                partIndex: partIndex,
-                                coordinates: coords,
-                                severity: severity,
-                                polarity: polarity,
-                                isSelected: selected,
-                                isUncertainPlacement: uncertain
-                            )
+                let uncertain = feature.properties.hasUncertainCurbPlacement
+                for (partIndex, coords) in feature.coordinateParts.enumerated() {
+                    guard coords.count >= 2 else { continue }
+                    renders.append(
+                        ParkingMapRenderItem(
+                            featureID: feature.id,
+                            partIndex: partIndex,
+                            coordinates: coords,
+                            severity: severity,
+                            polarity: polarity,
+                            isSelected: false,
+                            isUncertainPlacement: uncertain
                         )
-                    }
+                    )
+                }
             }
-            renders.sort { a, b in
-                if a.isSelected != b.isSelected { return !a.isSelected && b.isSelected }
-                return a.severity < b.severity
-            }
+            renders.sort { $0.severity < $1.severity }
             return renders
         }.value
 
         guard generation == viewportGeneration else { return }
-        renderItems = items
+        if items != renderItems {
+            renderItems = items
+        }
     }
 }
 
