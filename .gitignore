@@ -38,3 +38,4 @@ profile
 
 # Editor / build-server local
 buildServer.json
+.cursor/
