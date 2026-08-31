@@ -1,3 +1,4 @@
+import CoreGraphics
 import CoreLocation
 import Testing
 @testable import Parkking
@@ -58,6 +59,14 @@ struct ParkingOverlayStylingTests {
                 == .unclearUncertain
         )
         #expect(
+            ParkingOverlayStyling.colorKind(severity: 1, polarity: .partial, uncertain: false)
+                == .unclear
+        )
+        #expect(
+            ParkingOverlayStyling.colorKind(severity: 1, polarity: .partial, uncertain: true)
+                == .unclearUncertain
+        )
+        #expect(
             ParkingOverlayStyling.colorKind(severity: 2, polarity: .restricted, uncertain: false)
                 == .restricted
         )
@@ -67,11 +76,16 @@ struct ParkingOverlayStylingTests {
         )
     }
 
-    @Test("green and red base segments share the same line width")
+    @Test("green and red base segments share the same line width; uncertain segments are thinner")
     func greenAndRedBaseLineWidth() {
         #expect(ParkingOverlayBucketKind.allowed.lineWidth == ParkingOverlayBucketKind.restricted.lineWidth)
         #expect(ParkingOverlayBucketKind.allowed.lineWidth == 5)
         #expect(ParkingOverlayBucketKind.restricted.lineWidth == 5)
+        #expect(ParkingOverlayBucketKind.allowedUncertain.lineWidth == 3)
+        #expect(ParkingOverlayBucketKind.restrictedUncertain.lineWidth == 3)
+        #expect(ParkingOverlayBucketKind.unclearUncertain.lineWidth == 3)
+        #expect(ParkingOverlayBucketKind.allowed.lineCap == .round)
+        #expect(ParkingOverlayBucketKind.allowedUncertain.lineCap == .butt)
     }
 
     @Test("selected segment overlay styling preserves color and adds outer border")

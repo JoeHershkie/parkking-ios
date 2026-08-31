@@ -12,7 +12,7 @@ enum NearbySideTone: Sendable, Equatable {
             return .allowed
         case .notAllowed:
             return .notAllowed
-        case .scheduleUnclear:
+        case .scheduleUnclear, .partiallyAllowed:
             return .unclear
         }
     }
@@ -56,6 +56,7 @@ struct NearbySideChip: Identifiable, Equatable, Sendable {
         switch status {
         case .parkingAllowed: return "Parking allowed"
         case .likelyAllowed: return "Likely allowed"
+        case .partiallyAllowed: return "Partially allowed"
         case .notAllowed: return "Not allowed"
         case .scheduleUnclear: return "Schedule unclear"
         }

@@ -5,6 +5,7 @@ enum CurbVerdictStatus: String, Sendable, Equatable {
     case notAllowed = "not_allowed"
     case likelyAllowed = "likely_allowed"
     case scheduleUnclear = "schedule_unclear"
+    case partiallyAllowed = "partially_allowed"
 }
 
 enum RestrictionKind: String, Sendable, Equatable {
@@ -59,6 +60,8 @@ struct CurbVerdict: Sendable, Equatable {
     var street: String?
     var side: String?
     var sideDisplay: String?
+    var allowedStartMinute: Int?
+    var allowedEndMinute: Int?
 
     nonisolated init(
         status: CurbVerdictStatus,
@@ -72,7 +75,9 @@ struct CurbVerdict: Sendable, Equatable {
         signageReminder: String,
         street: String?,
         side: String?,
-        sideDisplay: String?
+        sideDisplay: String?,
+        allowedStartMinute: Int? = nil,
+        allowedEndMinute: Int? = nil
     ) {
         self.status = status
         self.headline = headline
@@ -86,6 +91,8 @@ struct CurbVerdict: Sendable, Equatable {
         self.street = street
         self.side = side
         self.sideDisplay = sideDisplay
+        self.allowedStartMinute = allowedStartMinute
+        self.allowedEndMinute = allowedEndMinute
     }
 }
 
@@ -140,7 +147,33 @@ enum CurbVerdictComposer {
         .notAllowed: "Not allowed",
         .likelyAllowed: "Likely allowed",
         .scheduleUnclear: "Schedule unclear",
+        .partiallyAllowed: "Partially allowed",
     ]
+
+    nonisolated private static func findContiguousAllowedIntervals(
+        startMinute: Int,
+        endMinute: Int,
+        isAllowed: (Int) -> Bool
+    ) -> [(start: Int, end: Int)] {
+        var intervals: [(start: Int, end: Int)] = []
+        var currentStart: Int? = nil
+        for m in startMinute..<endMinute {
+            if isAllowed(m) {
+                if currentStart == nil {
+                    currentStart = m
+                }
+            } else {
+                if let s = currentStart {
+                    intervals.append((start: s, end: m))
+                    currentStart = nil
+                }
+            }
+        }
+        if let s = currentStart {
+            intervals.append((start: s, end: endMinute))
+        }
+        return intervals
+    }
 
     nonisolated private static func categoryKind(_ category: String) -> RestrictionKind? {
         switch category {
@@ -206,7 +239,7 @@ enum CurbVerdictComposer {
             )
         }
 
-        if polarity == .restricted {
+        if polarity == .restricted || polarity == .partial {
             let kind = categoryKind(props.scheduleCategory) ?? .noParking
             let ruleKind: ContributingRuleKind
             switch kind {
@@ -384,6 +417,119 @@ enum CurbVerdictComposer {
 
         let maxStayRule = hardRestrictions.first { $0.kind == .maxStay }
         let maxStayWarning = maxStayRule?.reason
+
+        // If there's an interval query, evaluate minute-by-minute to detect partial allowance.
+        if let endMinute = options.effectiveEndMinute, endMinute > options.slot.minuteOfDay {
+            let startMinute = options.slot.minuteOfDay
+
+            let minuteIsAllowed: (Int) -> Bool = { m in
+                let slotM = Slot(
+                    dayOfWeek: options.slot.dayOfWeek,
+                    minuteOfDay: m,
+                    month: options.slot.month,
+                    dayOfMonth: options.slot.dayOfMonth,
+                    year: options.slot.year
+                )
+                let rulesM = options.features.map { feature in
+                    let eval = ScheduleEvaluator.evaluateAtSlot(
+                        props: feature.properties,
+                        slot: slotM,
+                        includeUnknown: options.includeUnknown
+                    )
+                    return classifyRule(
+                        feature: feature,
+                        evaluation: eval,
+                        requestedDurationMinutes: 0
+                    )
+                }
+                let permitM = rulesM.contains { $0.kind == .allowed }
+                let normalizedM = permitM
+                    ? rulesM.map { rule in
+                        if rule.kind == .permittedWindow {
+                            var updated = rule
+                            updated.kind = .inactive
+                            return updated
+                        }
+                        return rule
+                    }
+                    : rulesM
+                let restrictionsM = normalizedM.filter { hardKinds.contains($0.kind) }
+                let uncertainM = normalizedM.filter { $0.kind == .uncertain }
+                return restrictionsM.isEmpty && uncertainM.isEmpty
+            }
+
+            let minuteIsRestricted: (Int) -> Bool = { m in
+                let slotM = Slot(
+                    dayOfWeek: options.slot.dayOfWeek,
+                    minuteOfDay: m,
+                    month: options.slot.month,
+                    dayOfMonth: options.slot.dayOfMonth,
+                    year: options.slot.year
+                )
+                let rulesM = options.features.map { feature in
+                    let eval = ScheduleEvaluator.evaluateAtSlot(
+                        props: feature.properties,
+                        slot: slotM,
+                        includeUnknown: options.includeUnknown
+                    )
+                    return classifyRule(
+                        feature: feature,
+                        evaluation: eval,
+                        requestedDurationMinutes: 0
+                    )
+                }
+                let permitM = rulesM.contains { $0.kind == .allowed }
+                let normalizedM = permitM
+                    ? rulesM.map { rule in
+                        if rule.kind == .permittedWindow {
+                            var updated = rule
+                            updated.kind = .inactive
+                            return updated
+                        }
+                        return rule
+                    }
+                    : rulesM
+                let restrictionsM = normalizedM.filter { hardKinds.contains($0.kind) }
+                return !restrictionsM.isEmpty
+            }
+
+            let anyAllowed = (startMinute..<endMinute).contains(where: minuteIsAllowed)
+            let anyRestricted = (startMinute..<endMinute).contains(where: minuteIsRestricted)
+
+            if anyAllowed && anyRestricted {
+                let intervals = findContiguousAllowedIntervals(
+                    startMinute: startMinute,
+                    endMinute: endMinute,
+                    isAllowed: minuteIsAllowed
+                )
+                let bestInterval = intervals.first(where: { $0.start == startMinute })
+                    ?? intervals.max(by: { ($0.end - $0.start) < ($1.end - $1.start) })
+
+                if let bestInterval {
+                    let startFormatted = ParkingTimeQuery.formatTime(bestInterval.start)
+                    let endFormatted = ParkingTimeQuery.formatTime(bestInterval.end)
+                    let headline = "Partially allowed, from \(startFormatted) to \(endFormatted)"
+                    let primary = pickPrimary(hardRestrictions)
+
+                    return CurbVerdict(
+                        status: .partiallyAllowed,
+                        headline: headline,
+                        primaryReason: primary?.reason ?? "Parking is permitted from \(startFormatted) to \(endFormatted).",
+                        contributingRules: normalizedRules,
+                        activeRestrictions: hardRestrictions,
+                        uncertaintyNotes: uniquePreserveOrder(uncertaintyNotes),
+                        maxStayWarning: maxStayWarning,
+                        midnightWarning: midnightWarning,
+                        signageReminder: signageReminder,
+                        street: options.street,
+                        side: options.side,
+                        sideDisplay: options.sideDisplay,
+                        allowedStartMinute: bestInterval.start,
+                        allowedEndMinute: bestInterval.end
+                    )
+                }
+            }
+        }
 
         // Known restrictions override uncertainty.
         if !hardRestrictions.isEmpty {

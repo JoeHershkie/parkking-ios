@@ -559,7 +559,7 @@ final class ParkingMapViewModel {
         switch composed.status {
         case .parkingAllowed, .likelyAllowed:
             return .systemGreen
-        case .scheduleUnclear:
+        case .scheduleUnclear, .partiallyAllowed:
             return .systemOrange
         case .notAllowed:
             return .systemRed

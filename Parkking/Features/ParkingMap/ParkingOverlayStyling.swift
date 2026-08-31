@@ -31,9 +31,23 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
         }
     }
 
-    /// Base width for all regular segment types. Green and red share the same width.
+    /// Base width for all regular segment types. Uncertain segments are thinner than confident curb segments.
     nonisolated var lineWidth: CGFloat {
-        5
+        switch self {
+        case .allowedUncertain, .unclearUncertain, .restrictedUncertain:
+            return 3
+        default:
+            return 5
+        }
+    }
+
+    nonisolated var lineCap: CGLineCap {
+        switch self {
+        case .allowedUncertain, .unclearUncertain, .restrictedUncertain:
+            return .butt
+        default:
+            return .round
+        }
     }
 
     nonisolated var alpha: CGFloat {
@@ -80,7 +94,7 @@ enum ParkingOverlayStyling {
         let restricted = severity == 2
             || polarity == .restricted
             || polarity == .notPermitted
-        let unclear = polarity == .unknown
+        let unclear = polarity == .unknown || polarity == .partial || severity == 1
         let base: ParkingOverlayBucketKind
         if restricted {
             base = uncertain ? .restrictedUncertain : .restricted
@@ -160,6 +174,15 @@ final class ParkingStyledOverlay: MKMultiPolyline {
             return ParkingOverlayStyling.selectedLineWidth
         case .selectedBorder:
             return ParkingOverlayStyling.selectedBorderWidth
+        }
+    }
+
+    var lineCap: CGLineCap {
+        switch role {
+        case .base:
+            return kind.lineCap
+        case .selectedFill, .selectedBorder:
+            return .round
         }
     }
 

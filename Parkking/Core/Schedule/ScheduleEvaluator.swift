@@ -34,10 +34,14 @@ enum ScheduleEvaluator {
             return .restricted
         }
         if category == "restricted_periods" {
-            return fullyCovered ? .permitted : .notPermitted
+            if fullyCovered { return .permitted }
+            if overlaps { return .partial }
+            return .notPermitted
         }
         if isRestrictedCategory(category) {
-            return overlaps ? .restricted : .inactive
+            if !overlaps { return .inactive }
+            if fullyCovered { return .restricted }
+            return .partial
         }
         return .inactive
     }
@@ -125,14 +129,11 @@ enum ScheduleEvaluator {
                 slot: slot,
                 endMinute: endMinuteOfDay
             )
-            let fullyCovered =
-                category == "restricted_periods"
-                ? ScheduleMembership.membershipFullyCoversRange(
-                    schedule,
-                    slot: slot,
-                    endMinute: endMinuteOfDay
-                )
-                : false
+            let fullyCovered = ScheduleMembership.membershipFullyCoversRange(
+                schedule,
+                slot: slot,
+                endMinute: endMinuteOfDay
+            )
             return SlotEvaluation(
                 visible: true,
                 polarity: polarityFromRangeOverlap(

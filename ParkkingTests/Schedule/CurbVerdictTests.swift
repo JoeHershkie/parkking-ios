@@ -219,4 +219,66 @@ struct CurbVerdictTests {
         #expect(ParkingLabels.formatAllowedPeriodDuration(max: "15 min", maxMinutes: 15) == "15 min")
         #expect(ParkingLabels.formatAllowedPeriodDuration(max: "anytime", maxMinutes: nil) == "anytime")
     }
+
+    @Test func partiallyAllowedWhenRestrictionEndsDuringInterval() {
+        let tue5pm = Slot(
+            dayOfWeek: 2,
+            minuteOfDay: 17 * 60, // 5:00pm = 1020
+            month: 5,
+            dayOfMonth: 20,
+            year: 2025
+        )
+        let v = verdict(
+            features: [feature("no_parking", monFri86)],
+            slot: tue5pm,
+            effectiveEndMinute: 19 * 60, // 7:00pm = 1140
+            requestedDurationMinutes: 120
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 6:00pm to 7:00pm")
+        #expect(v.allowedStartMinute == 18 * 60)
+        #expect(v.allowedEndMinute == 19 * 60)
+        #expect(v.activeRestrictions.first?.kind == .noParking)
+    }
+
+    @Test func partiallyAllowedWhenRestrictionStartsDuringInterval() {
+        let noStopping4to6 = Schedule(
+            status: .ok,
+            source: "Mon–Fri 4pm–6pm",
+            windows: [
+                TimeWindow(days: [1, 2, 3, 4, 5], startMinute: 16 * 60, endMinute: 18 * 60),
+            ]
+        )
+        let v = verdict(
+            features: [feature("no_stopping", noStopping4to6)],
+            slot: tue3pm, // 3:00pm = 900
+            effectiveEndMinute: 17 * 60, // 5:00pm = 1020
+            requestedDurationMinutes: 120
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 3:00pm to 4:00pm")
+        #expect(v.allowedStartMinute == 15 * 60)
+        #expect(v.allowedEndMinute == 16 * 60)
+        #expect(v.activeRestrictions.first?.kind == .noStopping)
+    }
+
+    @Test func partiallyAllowedWhenPermittedWindowEndsDuringInterval() {
+        let tue5pm = Slot(
+            dayOfWeek: 2,
+            minuteOfDay: 17 * 60, // 5:00pm = 1020
+            month: 5,
+            dayOfMonth: 20,
+            year: 2025
+        )
+        let v = verdict(
+            features: [feature("restricted_periods", monFri86)],
+            slot: tue5pm,
+            effectiveEndMinute: 19 * 60, // 7:00pm = 1140
+            requestedDurationMinutes: 120
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 5:00pm to 6:00pm")
+        #expect(v.allowedStartMinute == 17 * 60)
+        #expect(v.allowedEndMinute == 18 * 60)
+    }
 }

@@ -143,6 +143,7 @@ struct VerdictSheet: View {
         switch status {
         case .parkingAllowed: return "checkmark.circle.fill"
         case .likelyAllowed: return "questionmark.circle.fill"
+        case .partiallyAllowed: return "clock.badge.checkmark.fill"
         case .scheduleUnclear: return "exclamationmark.triangle.fill"
         case .notAllowed: return "xmark.circle.fill"
         }
@@ -152,6 +153,7 @@ struct VerdictSheet: View {
         switch status {
         case .parkingAllowed: return .green
         case .likelyAllowed: return .teal
+        case .partiallyAllowed: return .orange
         case .scheduleUnclear: return .orange
         case .notAllowed: return .red
         }
@@ -192,6 +194,19 @@ struct VerdictSheet: View {
                 status: .scheduleUnclear,
                 headline: "Schedule unclear",
                 reason: "Schedule data is incomplete for this rule."
+            )
+        ),
+        detent: .constant(.medium)
+    )
+}
+
+#Preview("Partially allowed") {
+    VerdictSheet(
+        viewModel: .preview(
+            verdict: .preview(
+                status: .partiallyAllowed,
+                headline: "Partially allowed, from 6:00pm to 7:00pm",
+                reason: "No parking"
             )
         ),
         detent: .constant(.medium)

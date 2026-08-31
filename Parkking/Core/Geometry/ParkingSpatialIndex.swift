@@ -127,7 +127,7 @@ final class ParkingSpatialIndex: @unchecked Sendable {
         polarity: FilterPolarity?,
         unparsed: Bool? = nil
     ) -> Int {
-        if unparsed == true || polarity == .unknown { return 1 }
+        if unparsed == true || polarity == .unknown || polarity == .partial { return 1 }
         if polarity == .restricted || polarity == .notPermitted { return 2 }
         return 0
     }

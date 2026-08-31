@@ -45,6 +45,7 @@ nonisolated enum FilterPolarity: String, Sendable, Codable, Equatable {
     case notPermitted = "not_permitted"
     case unknown
     case inactive
+    case partial
 }
 
 nonisolated struct Slot: Sendable, Hashable, Codable, Equatable {

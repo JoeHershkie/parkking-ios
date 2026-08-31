@@ -248,7 +248,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             let renderer = MKMultiPolylineRenderer(multiPolyline: styled)
             renderer.strokeColor = styled.strokeColor
             renderer.lineWidth = styled.lineWidth
-            renderer.lineCap = .round
+            renderer.lineCap = styled.lineCap
             renderer.lineJoin = .round
             if !styled.dashPattern.isEmpty {
                 renderer.lineDashPattern = styled.dashPattern
