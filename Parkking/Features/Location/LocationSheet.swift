@@ -31,38 +31,42 @@ struct SearchSheet: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
 
-            TextField("Search Toronto address", text: $query)
-                .font(.system(size: 17, weight: .regular))
-                .textFieldStyle(.plain)
-                .focused($isSearchFocused)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.search)
+                TextField("Search Toronto address", text: $query)
+                    .font(.system(size: 16, weight: .regular))
+                    .textFieldStyle(.plain)
+                    .focused($isSearchFocused)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
 
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                    resolveError = nil
-                    searchClient.updateQuery("")
-                    viewModel.clearSearchPin()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 17))
-                        .foregroundStyle(.secondary)
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                        resolveError = nil
+                        searchClient.updateQuery("")
+                        viewModel.clearSearchPin()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search text")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search text")
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
+
+            TimeMenuButton(viewModel: viewModel, style: .searchCapsule)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
     }
 
     private var contentList: some View {

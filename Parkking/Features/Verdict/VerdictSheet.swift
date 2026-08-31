@@ -40,10 +40,7 @@ struct VerdictSheet: View {
                     .foregroundStyle(statusColor(verdict.status))
                     .accessibilityLabel("Status: \(verdict.headline)")
                 if let label = viewModel.resolvedQuery?.label {
-                    Text(label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Interval: \(label)")
+                    TimeMenuButton(viewModel: viewModel, style: .verdictChip(label))
                 }
             }
 

@@ -200,6 +200,45 @@ struct ParkingMapViewModelTests {
         #expect(vm.resolvedQuery?.truncatedAtMidnight == true)
     }
 
+    @Test("applying preset or custom time query updates timeChip and re-evaluates active verdict")
+    func timeQueryApplicationReevaluatesVerdict() async {
+        let now = ParkingTimeQuery.date(fromTorontoDateString: "2025-05-20", minuteOfDay: 14 * 60)
+        let vm = ParkingMapTestFixtures.viewModel(now: { now })
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.verdict != nil)
+        #expect(vm.timeChip == "Now · 1h")
+
+        // Switch to 3h preset
+        vm.applyTimeQuery(
+            ParkingTimeQuery.createNowTimeQuery(
+                durationMinutes: 180,
+                preset: .minutes(180),
+                now: now
+            )
+        )
+        #expect(vm.timeChip == "Now · 3h")
+        #expect(vm.resolvedQuery?.requestedDurationMinutes == 180)
+        #expect(vm.verdict != nil)
+
+        // Switch to custom time
+        let custom = TimeQuery(
+            mode: .custom,
+            date: "2025-05-20",
+            startMinute: 19 * 60,
+            requestedDurationMinutes: 120,
+            durationPreset: .minutes(120)
+        )
+        vm.applyTimeQuery(custom)
+        #expect(vm.appliedTimeQuery.mode == .custom)
+        #expect(vm.timeChip == "19:00 · 2h")
+        #expect(vm.resolvedQuery?.slot.minuteOfDay == 19 * 60)
+        #expect(vm.verdict != nil)
+    }
+
     @Test("load and error prompts take priority")
     func loadAndErrorPriority() {
         let vm = ParkingMapViewModel(
