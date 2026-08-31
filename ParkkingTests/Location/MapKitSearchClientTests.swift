@@ -37,4 +37,24 @@ struct MapKitSearchClientTests {
         #expect(ParkingMapConstants.contains(ParkingMapTestFixtures.toronto))
         #expect(ParkingMapConstants.contains(ParkingMapTestFixtures.vancouver) == false)
     }
+
+    @Test("ResolvedPlace models title and optional subtitle")
+    func resolvedPlaceModel() {
+        let placeWithSubtitle = ResolvedPlace(
+            title: "Nathan Phillips Square",
+            subtitle: "100 Queen St W, Toronto, ON",
+            coordinate: ParkingMapTestFixtures.toronto
+        )
+        #expect(placeWithSubtitle.title == "Nathan Phillips Square")
+        #expect(placeWithSubtitle.label == "Nathan Phillips Square")
+        #expect(placeWithSubtitle.subtitle == "100 Queen St W, Toronto, ON")
+
+        let placeWithoutSubtitle = ResolvedPlace(
+            label: "Queen St W",
+            coordinate: ParkingMapTestFixtures.toronto
+        )
+        #expect(placeWithoutSubtitle.title == "Queen St W")
+        #expect(placeWithoutSubtitle.label == "Queen St W")
+        #expect(placeWithoutSubtitle.subtitle == nil)
+    }
 }

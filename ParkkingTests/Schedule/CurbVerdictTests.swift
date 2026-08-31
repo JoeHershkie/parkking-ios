@@ -94,7 +94,8 @@ struct CurbVerdictTests {
             requestedDurationMinutes: 60
         )
         #expect(v.status == .notAllowed)
-        #expect(v.primaryReason?.localizedCaseInsensitiveContains("stopping") == true)
+        #expect(v.primaryReason == "No stopping")
+        #expect(v.activeRestrictions.count == 2)
     }
 
     @Test func maxStayWarning() {
@@ -208,5 +209,14 @@ struct CurbVerdictTests {
         )
         #expect(v.status == .notAllowed)
         #expect(v.primaryReason?.localizedCaseInsensitiveContains("outside the permitted") == true)
+    }
+
+    @Test func allowedPeriodDurationFormatting() {
+        #expect(ParkingLabels.scheduleCategoryLabel("restricted_periods") == "Allowed periods")
+        #expect(ParkingLabels.formatAllowedPeriodDuration(max: "1 hour", maxMinutes: 60) == "1 hr")
+        #expect(ParkingLabels.formatAllowedPeriodDuration(max: "10 mins.", maxMinutes: 10) == "10 min")
+        #expect(ParkingLabels.formatAllowedPeriodDuration(max: "2 hours", maxMinutes: 120) == "2 hr")
+        #expect(ParkingLabels.formatAllowedPeriodDuration(max: "15 min", maxMinutes: 15) == "15 min")
+        #expect(ParkingLabels.formatAllowedPeriodDuration(max: "anytime", maxMinutes: nil) == "anytime")
     }
 }

@@ -12,14 +12,6 @@ struct VerdictSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let verdict = viewModel.verdict {
                     compactVerdict(verdict)
-
-                    if detent != VerdictSheet.compactDetent || dynamicTypeSize.isAccessibilitySize {
-                        nearbySidesSection
-                    }
-
-                    if detent == .large || dynamicTypeSize.isAccessibilitySize || viewModel.sheetExpanded {
-                        ruleDetailsSection(verdict)
-                    }
                 }
             }
             .padding()
@@ -40,7 +32,7 @@ struct VerdictSheet: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(verdict.street ?? "Selected location")
+                Text(viewModel.cardAddress ?? verdict.street ?? "Selected location")
                     .font(.headline)
                     .lineLimit(2)
                 Text(verdict.headline)
@@ -70,7 +62,16 @@ struct VerdictSheet: View {
             .accessibilityLabel("Close")
         }
 
-        if let reason = verdict.primaryReason {
+        let displayedRules = rulesToDisplay(verdict)
+        if !displayedRules.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(displayedRules.enumerated()), id: \.offset) { _, rule in
+                    Text(formatAppliedRule(rule))
+                        .font(.footnote.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else if let reason = verdict.primaryReason {
             Text(reason)
                 .font(.footnote.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
@@ -94,77 +95,39 @@ struct VerdictSheet: View {
                 .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 .fixedSize(horizontal: false, vertical: true)
         }
-
-        Text(verdict.signageReminder)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
-    @ViewBuilder
-    private var nearbySidesSection: some View {
-        let rows = viewModel.nearbyStreetRows
-        if rows.contains(where: { $0.sides.count > 0 }),
-           (viewModel.selection?.groups.count ?? 0) > 1
-        {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Nearby curb sides")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                ForEach(rows) { row in
-                    HStack(spacing: 8) {
-                        Text(row.street)
-                            .font(.subheadline.weight(.bold))
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        HStack(spacing: 6) {
-                            ForEach(row.sides) { chip in
-                                sideChip(chip, street: row.street)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+    private func rulesToDisplay(_ verdict: CurbVerdict) -> [ContributingRule] {
+        if !verdict.activeRestrictions.isEmpty {
+            return dedupedRules(verdict.activeRestrictions)
+        } else if !verdict.contributingRules.isEmpty {
+            return dedupedRules(verdict.contributingRules)
+        } else {
+            return []
+        }
+    }
+
+    private func formatAppliedRule(_ rule: ContributingRule) -> String {
+        let props = rule.feature.properties
+        let label = ParkingLabels.scheduleCategoryLabel(props.scheduleCategory)
+        let ruleText = props.rule.trimmingCharacters(in: .whitespacesAndNewlines)
+        let duration = (props.scheduleCategory == "restricted_periods")
+            ? ParkingLabels.formatAllowedPeriodDuration(max: props.max, maxMinutes: props.maxMinutes)
+            : nil
+
+        if let duration {
+            if !ruleText.isEmpty {
+                return "\(label): \(duration), \"\(ruleText)\""
+            } else {
+                return "\(label): \(duration)"
+            }
+        } else {
+            if !ruleText.isEmpty {
+                return "\(label): \"\(ruleText)\""
+            } else {
+                return label.isEmpty ? rule.reason : label
             }
         }
-    }
-
-    @ViewBuilder
-    private func ruleDetailsSection(_ verdict: CurbVerdict) -> some View {
-        let rules = dedupedRules(verdict.contributingRules)
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Rule details (\(rules.count))")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            RuleDetailsView(rules: rules)
-        }
-    }
-
-    private func sideChip(_ chip: NearbySideChip, street: String) -> some View {
-        let selected = viewModel.selection?.selectedGroupKey == chip.groupKey
-        return Button {
-            viewModel.selectGroup(chip.groupKey)
-        } label: {
-            Text(chip.letter)
-                .font(.subheadline.weight(.black))
-                .foregroundStyle(chip.tone.color)
-                .frame(width: 44, height: 44)
-                .background(chip.tone.color.opacity(0.16), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(chip.tone.color.opacity(0.35), lineWidth: 1)
-                }
-                .overlay {
-                    if selected {
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.primary, lineWidth: 2)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(chip.accessibilityLabel(street: street))
-        .accessibilityValue(chip.accessibilityValue)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     private func dedupedRules(_ rules: [ContributingRule]) -> [ContributingRule] {
@@ -205,7 +168,7 @@ struct VerdictSheet: View {
             verdict: .preview(
                 status: .parkingAllowed,
                 headline: "Parking allowed",
-                reason: nil
+                reason: "Mapped rules permit this interval."
             )
         ),
         detent: .constant(.medium)
@@ -218,7 +181,7 @@ struct VerdictSheet: View {
             verdict: .preview(
                 status: .notAllowed,
                 headline: "Not allowed",
-                reason: "No parking is in effect for part of this interval."
+                reason: "No stopping"
             )
         ),
         detent: .constant(.medium)

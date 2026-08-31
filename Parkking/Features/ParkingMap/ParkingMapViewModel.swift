@@ -36,6 +36,9 @@ final class ParkingMapViewModel {
 
     var pendingCameraRegion: MKCoordinateRegion?
     var selectedFeatureIDs: Set<String> = []
+    var searchPin: SearchPinAnnotation?
+    var tapDot: TapDotAnnotation?
+    var cardAddress: String?
 
     var loadState: ParkingDataLoadState = .idle
     var renderItems: [ParkingMapRenderItem] = []
@@ -59,12 +62,14 @@ final class ParkingMapViewModel {
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
+    private let geocodingClient: any GeocodingProviding
     private let now: () -> Date
     private let startsClock: Bool
     private let openURL: (URL) -> Void
     private var dataset: ParkingDataset?
     private(set) var viewportGeneration = 0
     private var clockTask: Task<Void, Never>?
+    private var reverseGeocodeTask: Task<Void, Never>?
     private var visibleRegion: MKCoordinateRegion?
     private var didAutoLocateThisLaunch = false
     private var awaitingFirstGrant = false
@@ -97,6 +102,7 @@ final class ParkingMapViewModel {
         dataStore: ParkingDataStore = ParkingDataStore(),
         locationClient: (any LocationProviding)? = nil,
         recentsStore: (any RecentsStoring)? = nil,
+        geocodingClient: (any GeocodingProviding)? = nil,
         now: @escaping () -> Date = Date.init,
         dataset: ParkingDataset? = nil,
         startsClock: Bool = true,
@@ -105,6 +111,7 @@ final class ParkingMapViewModel {
         self.dataStore = dataStore
         self.locationClient = locationClient ?? LocationClient()
         self.recentsStore = recentsStore ?? RecentsStore()
+        self.geocodingClient = geocodingClient ?? CLGeocodingClient()
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }
@@ -184,8 +191,28 @@ final class ParkingMapViewModel {
         if let street = group.street as String? {
             locationLabel = street
         }
+        if tapDot != nil {
+            tapDot?.color = dotColor(for: group, resolved: resolvedQuery)
+        }
         syncSelectedFeatureIDs()
         recomputeVerdict()
+    }
+
+    @discardableResult
+    func selectSearchResult(
+        title: String,
+        subtitle: String? = nil,
+        coordinate: CLLocationCoordinate2D,
+        source: SelectionSource = .search
+    ) -> Bool {
+        guard ParkingMapConstants.contains(coordinate) else { return false }
+        selectAtPoint(
+            coordinate: coordinate,
+            label: title,
+            subtitle: subtitle,
+            source: source
+        )
+        return true
     }
 
     @discardableResult
@@ -194,9 +221,12 @@ final class ParkingMapViewModel {
         coordinate: CLLocationCoordinate2D,
         source: SelectionSource
     ) -> Bool {
-        guard ParkingMapConstants.contains(coordinate) else { return false }
-        selectAtPoint(coordinate: coordinate, label: label, source: source)
-        return true
+        selectSearchResult(
+            title: label,
+            subtitle: nil,
+            coordinate: coordinate,
+            source: source
+        )
     }
 
     func applyTimeQuery(_ query: TimeQuery) {
@@ -206,11 +236,19 @@ final class ParkingMapViewModel {
         resolveAppliedQuery(recomputeViewport: true)
     }
 
+    func clearSearchPin() {
+        searchPin = nil
+    }
+
     func dismissResult() {
+        reverseGeocodeTask?.cancel()
+        reverseGeocodeTask = nil
         isResultPresented = false
         selection = nil
         verdict = nil
         selectedFeatureIDs = []
+        tapDot = nil
+        cardAddress = nil
         locationLabel = "Search or tap the map"
     }
 
@@ -292,8 +330,12 @@ final class ParkingMapViewModel {
     func selectAtPoint(
         coordinate: CLLocationCoordinate2D,
         label: String?,
+        subtitle: String? = nil,
         source: SelectionSource
     ) {
+        reverseGeocodeTask?.cancel()
+        reverseGeocodeTask = nil
+
         let fly = source != .tap
         let recordRecent = source == .search || source == .recent
 
@@ -305,53 +347,135 @@ final class ParkingMapViewModel {
             curbVisible = true
         }
 
+        if source == .search || source == .recent || source == .gps {
+            searchPin = SearchPinAnnotation(
+                coordinate: coordinate,
+                title: label,
+                subtitle: subtitle,
+                source: source
+            )
+            tapDot = nil
+        } else {
+            searchPin = nil
+        }
+
         guard let dataset else { return }
         let point = LngLat(lng: coordinate.longitude, lat: coordinate.latitude)
+        let searchDistance = (source == .tap)
+            ? CurbSelection.tapMaxDistanceMeters
+            : CurbSelection.searchMaxDistanceMeters
         let padDeg = CurbGeometry.degreesPad(
-            forMeters: CurbSelection.tapMaxDistanceMeters,
+            forMeters: searchDistance,
             atLatitude: point.lat
         )
         let subset = dataset.index.queryBBox(
             BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
             padDeg: padDeg
         )
-        // Map taps always pick the geometrically nearest group. `preferredGroupKey` is
-        // only for the nearby-sides sheet (`selectGroup`), where the user already chose a side.
         let result = CurbSelection.selectNearestCurb(
             features: subset,
             point: point,
+            maxDistanceMeters: searchDistance,
             preferredGroupKey: nil
         )
 
         lastSelectionSource = source
         selection = result
-        locationLabel = label
-            ?? result.selected?.street
-            ?? String(
-                format: "%.5f°N, %.5f°W",
-                coordinate.latitude,
-                abs(coordinate.longitude)
-            )
 
         if recordRecent, let label {
-            recents = recentsStore.add(label: label, coordinate: coordinate)
+            recents = recentsStore.add(
+                label: label,
+                subtitle: subtitle,
+                coordinate: coordinate
+            )
         }
 
         syncSelectedFeatureIDs()
         recomputeVerdict()
 
         if source == .tap {
-            isResultPresented = result.selected != nil
-            if result.selected != nil {
+            if let selected = result.selected {
+                isResultPresented = true
                 hasTappedSegmentThisSession = true
+
+                let nearestCoord: CLLocationCoordinate2D
+                if let primaryFeature = selected.features.first(where: { selected.highlightFeatureIDs.contains($0.id) }) ?? selected.features.first,
+                   let nearest = CurbGeometry.nearestPointOnFeatureMeters(point: point, feature: primaryFeature) {
+                    nearestCoord = CLLocationCoordinate2D(latitude: nearest.point.lat, longitude: nearest.point.lng)
+                } else {
+                    nearestCoord = coordinate
+                }
+
+                let color = dotColor(for: selected, resolved: resolvedQuery)
+                tapDot = TapDotAnnotation(coordinate: nearestCoord, color: color)
+
+                cardAddress = selected.street
+                locationLabel = selected.street
+
+                let lookupCoord = coordinate
+                reverseGeocodeTask = Task { [weak self] in
+                    guard let self else { return }
+                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
+                        await MainActor.run {
+                            self.cardAddress = address
+                            self.locationLabel = address
+                        }
+                    }
+                }
+            } else {
+                tapDot = nil
+                isResultPresented = false
+                locationLabel = "Search or tap the map"
             }
         } else {
-            isResultPresented = false
+            isResultPresented = true
+            hasTappedSegmentThisSession = true
+            tapDot = nil
+
+            let displayTitle = label ?? subtitle ?? result.selected?.street
+            cardAddress = displayTitle
+            locationLabel = displayTitle
+                ?? String(
+                    format: "%.5f°N, %.5f°W",
+                    coordinate.latitude,
+                    abs(coordinate.longitude)
+                )
+
+            let isCoordinateOrGeneric = label == nil
+                || label == "Current location"
+                || label?.contains("°") == true
+                || (label?.split(separator: ",").count == 2 && Double(label!.split(separator: ",")[0].trimmingCharacters(in: .whitespaces)) != nil)
+
+            if isCoordinateOrGeneric {
+                let lookupCoord = coordinate
+                reverseGeocodeTask = Task { [weak self] in
+                    guard let self else { return }
+                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
+                        await MainActor.run {
+                            self.cardAddress = address
+                            self.locationLabel = address
+                        }
+                    }
+                }
+            }
         }
 
         if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
         }
+    }
+
+    func selectAtPoint(
+        coordinate: CLLocationCoordinate2D,
+        label: String?,
+        source: SelectionSource
+    ) {
+        selectAtPoint(
+            coordinate: coordinate,
+            label: label,
+            subtitle: nil,
+            source: source
+        )
     }
 
     private func syncSelectedFeatureIDs() {
@@ -414,8 +538,31 @@ final class ParkingMapViewModel {
         resolvedQuery = resolved
         timeChip = ParkingTimeQuery.formatTimeQueryChip(query: appliedTimeQuery, resolved: resolved)
         recomputeVerdict()
+        if let group = selection?.selected, tapDot != nil {
+            tapDot?.color = dotColor(for: group, resolved: resolved)
+        }
         if recomputeViewport, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
+        }
+    }
+
+    private func dotColor(for group: CurbSideGroup, resolved: ResolvedTimeQuery?) -> UIColor {
+        guard let resolved else { return .systemGreen }
+        let features = group.verdictFeatures
+        let composed = CurbVerdictComposer.composeCurbVerdictForQuery(
+            features: features,
+            resolved: resolved,
+            street: group.street,
+            side: group.side,
+            sideDisplay: group.sideDisplay
+        )
+        switch composed.status {
+        case .parkingAllowed, .likelyAllowed:
+            return .systemGreen
+        case .scheduleUnclear:
+            return .systemOrange
+        case .notAllowed:
+            return .systemRed
         }
     }
 

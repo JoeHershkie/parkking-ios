@@ -79,10 +79,12 @@ struct RecentsStoreTests {
         let first = RecentsStore(defaults: defaults, key: suite)
         first.add(
             label: "Home",
+            subtitle: "100 Queen St W",
             coordinate: CLLocationCoordinate2D(latitude: 43.65, longitude: -79.4)
         )
         let second = RecentsStore(defaults: defaults, key: suite)
         #expect(second.recents.first?.label == "Home")
+        #expect(second.recents.first?.subtitle == "100 Queen St W")
         defaults.removePersistentDomain(forName: suite)
     }
 }

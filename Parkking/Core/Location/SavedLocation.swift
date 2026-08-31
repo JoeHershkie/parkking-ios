@@ -4,6 +4,7 @@ import Foundation
 struct SavedLocation: Codable, Equatable, Identifiable, Sendable {
     var id: String
     var label: String
+    var subtitle: String?
     var latitude: Double
     var longitude: Double
     var savedAt: Date
@@ -11,12 +12,14 @@ struct SavedLocation: Codable, Equatable, Identifiable, Sendable {
     nonisolated init(
         id: String,
         label: String,
+        subtitle: String? = nil,
         latitude: Double,
         longitude: Double,
         savedAt: Date
     ) {
         self.id = id
         self.label = label
+        self.subtitle = subtitle
         self.latitude = latitude
         self.longitude = longitude
         self.savedAt = savedAt

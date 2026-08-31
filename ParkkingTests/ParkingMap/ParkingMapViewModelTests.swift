@@ -6,37 +6,54 @@ import Testing
 @MainActor
 @Suite("Parking map selection and coaching")
 struct ParkingMapViewModelTests {
-    @Test("search and recents fly and record recents, GPS flies without recents")
+    @Test("search and recents fly and record recents, GPS flies without recents, and presents verdict card")
     func searchRecentAndGPSSelection() async {
         let recents = ParkingMapTestFixtures.recentsStore()
         let location = MockLocationClient()
-        let vm = ParkingMapTestFixtures.viewModel(location: location, recents: recents)
+        let geocoding = MockGeocodingClient(defaultResult: "100 Queen St W")
+        let vm = ParkingMapTestFixtures.viewModel(location: location, recents: recents, geocoding: geocoding)
         await vm.start()
 
         let accepted = vm.selectSearchResult(
-            label: "City Hall",
+            title: "City Hall",
+            subtitle: "100 Queen St W, Toronto, ON",
             coordinate: ParkingMapTestFixtures.queenNorth,
             source: .search
         )
         #expect(accepted)
         #expect(vm.lastSelectionSource == .search)
-        #expect(vm.isResultPresented == false)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.cardAddress == "City Hall")
         #expect(vm.lastFlownRegion != nil)
         #expect(
             ParkingMapConstants.visibleWidthMeters(vm.lastFlownRegion!)
                 < ParkingMapConstants.curbVisibleMaxWidthMeters
         )
         #expect(vm.selection?.selected != nil)
+        #expect(vm.searchPin != nil)
+        #expect(vm.tapDot == nil)
+        #expect(vm.searchPin?.title == "City Hall")
+        #expect(vm.searchPin?.subtitle == "100 Queen St W, Toronto, ON")
+        #expect(vm.searchPin?.coordinate.latitude == ParkingMapTestFixtures.queenNorth.latitude)
+        #expect(vm.searchPin?.coordinate.longitude == ParkingMapTestFixtures.queenNorth.longitude)
         #expect(recents.recents.first?.label == "City Hall")
+        #expect(recents.recents.first?.subtitle == "100 Queen St W, Toronto, ON")
 
         vm.selectAtPoint(
             coordinate: ParkingMapTestFixtures.queenNorth,
             label: "City Hall",
+            subtitle: "100 Queen St W, Toronto, ON",
             source: .recent
         )
         #expect(vm.lastSelectionSource == .recent)
-        #expect(vm.isResultPresented == false)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin?.title == "City Hall")
+        #expect(vm.searchPin?.subtitle == "100 Queen St W, Toronto, ON")
+        #expect(vm.tapDot == nil)
         #expect(recents.recents.count == 1)
+
+        vm.clearSearchPin()
+        #expect(vm.searchPin == nil)
 
         vm.selectAtPoint(
             coordinate: ParkingMapTestFixtures.queenNorth,
@@ -44,7 +61,7 @@ struct ParkingMapViewModelTests {
             source: .gps
         )
         #expect(vm.lastSelectionSource == .gps)
-        #expect(vm.isResultPresented == false)
+        #expect(vm.isResultPresented == true)
         #expect(recents.recents.contains { $0.label == "Current location" } == false)
     }
 
@@ -53,36 +70,79 @@ struct ParkingMapViewModelTests {
         let recents = ParkingMapTestFixtures.recentsStore()
         let vm = ParkingMapTestFixtures.viewModel(recents: recents)
         let accepted = vm.selectSearchResult(
-            label: "Vancouver",
+            title: "Vancouver",
+            subtitle: "Vancouver, BC",
             coordinate: ParkingMapTestFixtures.vancouver,
             source: .search
         )
         #expect(accepted == false)
         #expect(recents.recents.isEmpty)
+        #expect(vm.searchPin == nil)
+        #expect(vm.tapDot == nil)
         #expect(vm.lastFlownRegion == nil)
         #expect(vm.selection == nil)
         #expect(vm.isResultPresented == false)
     }
 
-    @Test("manual tap selects without flying or writing recents, and presents result card")
-    func manualTapDoesNotFlyOrRecord() async {
+    @Test("manual tap selects without flying or writing recents, presents result card with dot and geocoded address")
+    func manualTapRendersDotAndReverseGeocodes() async {
         let recents = ParkingMapTestFixtures.recentsStore()
-        let vm = ParkingMapTestFixtures.viewModel(recents: recents)
+        let geocoding = MockGeocodingClient(defaultResult: "124 Queen St W")
+        let vm = ParkingMapTestFixtures.viewModel(recents: recents, geocoding: geocoding)
         await vm.start()
         await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
         vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
         #expect(vm.lastSelectionSource == .tap)
         #expect(vm.isResultPresented == true)
         #expect(vm.lastFlownRegion == nil)
         #expect(vm.selection?.selected != nil)
+        #expect(vm.searchPin == nil)
+        #expect(vm.tapDot != nil)
         #expect(recents.recents.isEmpty)
         #expect(vm.sheetPrompt == .verdict)
+
+        // Wait for async reverse geocoding to populate cardAddress
+        for _ in 0..<20 {
+            if vm.cardAddress == "124 Queen St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "124 Queen St W")
 
         vm.dismissResult()
         #expect(vm.isResultPresented == false)
         #expect(vm.selection == nil)
         #expect(vm.verdict == nil)
+        #expect(vm.tapDot == nil)
+        #expect(vm.cardAddress == nil)
         #expect(vm.selectedFeatureIDs.isEmpty)
+    }
+
+    @Test("coordinate / non-address search snaps to nearest street segment and sets verdict")
+    func coordinateSearchSnapsToNearestStreetSegment() async {
+        let geocoding = MockGeocodingClient(defaultResult: "100 Queen St W")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+
+        // Point set back 30m from Queen St
+        let setbackCoord = CLLocationCoordinate2D(latitude: 43.6503, longitude: -79.4005)
+        let accepted = vm.selectSearchResult(
+            title: "43.6503, -79.4005",
+            subtitle: nil,
+            coordinate: setbackCoord,
+            source: .search
+        )
+        #expect(accepted)
+        #expect(vm.selection?.selected != nil)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+        #expect(vm.tapDot == nil)
+
+        for _ in 0..<20 {
+            if vm.cardAddress == "100 Queen St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "100 Queen St W")
     }
 
     @Test("zoom threshold changes coaching and never auto-selects")

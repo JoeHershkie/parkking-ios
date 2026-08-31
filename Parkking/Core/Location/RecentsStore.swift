@@ -6,7 +6,7 @@ import Observation
 protocol RecentsStoring: AnyObject {
     var recents: [SavedLocation] { get }
     @discardableResult
-    func add(label: String, coordinate: CLLocationCoordinate2D, savedAt: Date) -> [SavedLocation]
+    func add(label: String, subtitle: String?, coordinate: CLLocationCoordinate2D, savedAt: Date) -> [SavedLocation]
     @discardableResult
     func remove(id: String) -> [SavedLocation]
     @discardableResult
@@ -16,8 +16,18 @@ protocol RecentsStoring: AnyObject {
 @MainActor
 extension RecentsStoring {
     @discardableResult
+    func add(label: String, coordinate: CLLocationCoordinate2D, savedAt: Date) -> [SavedLocation] {
+        add(label: label, subtitle: nil, coordinate: coordinate, savedAt: savedAt)
+    }
+
+    @discardableResult
     func add(label: String, coordinate: CLLocationCoordinate2D) -> [SavedLocation] {
-        add(label: label, coordinate: coordinate, savedAt: Date())
+        add(label: label, subtitle: nil, coordinate: coordinate, savedAt: Date())
+    }
+
+    @discardableResult
+    func add(label: String, subtitle: String?, coordinate: CLLocationCoordinate2D) -> [SavedLocation] {
+        add(label: label, subtitle: subtitle, coordinate: coordinate, savedAt: Date())
     }
 }
 
@@ -41,6 +51,7 @@ final class RecentsStore: RecentsStoring {
     @discardableResult
     func add(
         label: String,
+        subtitle: String? = nil,
         coordinate: CLLocationCoordinate2D,
         savedAt: Date
     ) -> [SavedLocation] {
@@ -52,6 +63,7 @@ final class RecentsStore: RecentsStoring {
         let entry = SavedLocation(
             id: id,
             label: label,
+            subtitle: subtitle,
             latitude: coordinate.latitude,
             longitude: coordinate.longitude,
             savedAt: savedAt

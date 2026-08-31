@@ -167,11 +167,11 @@ enum CurbGeometry {
         return (x: lng * m.mx, y: lat * m.my)
     }
 
-    nonisolated private static func distancePointToSegmentMeters(
+    nonisolated private static func nearestPointAndDistanceToSegmentMeters(
         point: LngLat,
         a: (Double, Double),
         b: (Double, Double)
-    ) -> Double {
+    ) -> (point: LngLat, distanceMeters: Double) {
         let originLat = point.lat
         let p = project(lng: point.lng, lat: point.lat, originLat: originLat)
         let pa = project(lng: a.0, lat: a.1, originLat: originLat)
@@ -180,49 +180,75 @@ enum CurbGeometry {
         let dy = pb.y - pa.y
         let lenSq = dx * dx + dy * dy
         if lenSq == 0 {
-            return hypot(p.x - pa.x, p.y - pa.y)
+            let dist = hypot(p.x - pa.x, p.y - pa.y)
+            return (LngLat(lng: a.0, lat: a.1), dist)
         }
         var t = ((p.x - pa.x) * dx + (p.y - pa.y) * dy) / lenSq
         t = max(0, min(1, t))
         let cx = pa.x + t * dx
         let cy = pa.y + t * dy
-        return hypot(p.x - cx, p.y - cy)
+        let dist = hypot(p.x - cx, p.y - cy)
+        let m = metersPerDegree(lat: originLat)
+        let unprojected = LngLat(lng: cx / m.mx, lat: cy / m.my)
+        return (unprojected, dist)
+    }
+
+    nonisolated static func nearestPointOnLineStringMeters(
+        point: LngLat,
+        coordinates: [[Double]]
+    ) -> (point: LngLat, distanceMeters: Double)? {
+        if coordinates.isEmpty { return nil }
+        if coordinates.count == 1 {
+            guard coordinates[0].count >= 2 else { return nil }
+            let pt = LngLat(lng: coordinates[0][0], lat: coordinates[0][1])
+            return (pt, haversineMeters(point, pt))
+        }
+        var minDist = Double.infinity
+        var bestPoint: LngLat?
+        for i in 0..<(coordinates.count - 1) {
+            guard coordinates[i].count >= 2, coordinates[i + 1].count >= 2 else { continue }
+            let res = nearestPointAndDistanceToSegmentMeters(
+                point: point,
+                a: (coordinates[i][0], coordinates[i][1]),
+                b: (coordinates[i + 1][0], coordinates[i + 1][1])
+            )
+            if res.distanceMeters < minDist {
+                minDist = res.distanceMeters
+                bestPoint = res.point
+            }
+        }
+        guard let bestPoint else { return nil }
+        return (bestPoint, minDist)
+    }
+
+    nonisolated static func nearestPointOnFeatureMeters(
+        point: LngLat,
+        feature: ParkingFeature
+    ) -> (point: LngLat, distanceMeters: Double)? {
+        var minDist = Double.infinity
+        var bestPoint: LngLat?
+        for part in lineParts(feature.geometry) {
+            guard let res = nearestPointOnLineStringMeters(point: point, coordinates: part) else { continue }
+            if res.distanceMeters < minDist {
+                minDist = res.distanceMeters
+                bestPoint = res.point
+            }
+        }
+        guard let bestPoint else { return nil }
+        return (bestPoint, minDist)
     }
 
     nonisolated static func distancePointToLineStringMeters(
         point: LngLat,
         coordinates: [[Double]]
     ) -> Double {
-        if coordinates.isEmpty { return .infinity }
-        if coordinates.count == 1 {
-            guard coordinates[0].count >= 2 else { return .infinity }
-            return haversineMeters(
-                point,
-                LngLat(lng: coordinates[0][0], lat: coordinates[0][1])
-            )
-        }
-        var minDist = Double.infinity
-        for i in 0..<(coordinates.count - 1) {
-            guard coordinates[i].count >= 2, coordinates[i + 1].count >= 2 else { continue }
-            let d = distancePointToSegmentMeters(
-                point: point,
-                a: (coordinates[i][0], coordinates[i][1]),
-                b: (coordinates[i + 1][0], coordinates[i + 1][1])
-            )
-            if d < minDist { minDist = d }
-        }
-        return minDist
+        nearestPointOnLineStringMeters(point: point, coordinates: coordinates)?.distanceMeters ?? .infinity
     }
 
     nonisolated static func distancePointToFeatureMeters(
         point: LngLat,
         feature: ParkingFeature
     ) -> Double {
-        var minDist = Double.infinity
-        for part in lineParts(feature.geometry) {
-            let d = distancePointToLineStringMeters(point: point, coordinates: part)
-            if d < minDist { minDist = d }
-        }
-        return minDist
+        nearestPointOnFeatureMeters(point: point, feature: feature)?.distanceMeters ?? .infinity
     }
 }

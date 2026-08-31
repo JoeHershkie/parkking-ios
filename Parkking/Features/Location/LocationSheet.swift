@@ -50,6 +50,7 @@ struct SearchSheet: View {
                     query = ""
                     resolveError = nil
                     searchClient.updateQuery("")
+                    viewModel.clearSearchPin()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 17))
@@ -107,11 +108,26 @@ struct SearchSheet: View {
                         Button {
                             pickRecent(recent)
                         } label: {
-                            Label(recent.label, systemImage: "clock")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            HStack(spacing: 12) {
+                                Image(systemName: "clock")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(recent.label)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    if let subtitle = recent.subtitle, !subtitle.isEmpty {
+                                        Text(subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(recent.label)
+                        .accessibilityValue(recent.subtitle ?? "")
                         .accessibilityHint("Use this recent location")
 
                         Button(role: .destructive) {
@@ -178,7 +194,8 @@ struct SearchSheet: View {
         isSearchFocused = false
         detent = .height(76)
         _ = viewModel.selectSearchResult(
-            label: recent.label,
+            title: recent.label,
+            subtitle: recent.subtitle,
             coordinate: recent.coordinate,
             source: .recent
         )
@@ -189,7 +206,8 @@ struct SearchSheet: View {
         do {
             let place = try await searchClient.resolve(completion)
             let accepted = viewModel.selectSearchResult(
-                label: place.label,
+                title: place.title,
+                subtitle: place.subtitle,
                 coordinate: place.coordinate,
                 source: .search
             )

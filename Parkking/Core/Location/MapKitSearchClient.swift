@@ -25,11 +25,29 @@ struct PlaceCompletion: Identifiable, Equatable {
 }
 
 struct ResolvedPlace: Equatable {
-    var label: String
+    var title: String
+    var subtitle: String?
     var coordinate: CLLocationCoordinate2D
 
+    var label: String {
+        title
+    }
+
+    init(title: String, subtitle: String? = nil, coordinate: CLLocationCoordinate2D) {
+        self.title = title
+        self.subtitle = subtitle
+        self.coordinate = coordinate
+    }
+
+    init(label: String, coordinate: CLLocationCoordinate2D) {
+        self.title = label
+        self.subtitle = nil
+        self.coordinate = coordinate
+    }
+
     nonisolated static func == (lhs: ResolvedPlace, rhs: ResolvedPlace) -> Bool {
-        lhs.label == rhs.label
+        lhs.title == rhs.title
+            && lhs.subtitle == rhs.subtitle
             && lhs.coordinate.latitude == rhs.coordinate.latitude
             && lhs.coordinate.longitude == rhs.coordinate.longitude
     }
@@ -133,10 +151,11 @@ final class MapKitSearchClient: NSObject, PlaceSearching, MKLocalSearchCompleter
             throw MapKitSearchError.noCoordinate
         }
         let coordinate = try MapKitSearchConfiguration.validatedCoordinate(item.location.coordinate)
-        let label = completion.title.isEmpty
+        let title = completion.title.isEmpty
             ? (item.name ?? completion.subtitle)
             : completion.title
-        return ResolvedPlace(label: label, coordinate: coordinate)
+        let subtitle = completion.subtitle.isEmpty ? nil : completion.subtitle
+        return ResolvedPlace(title: title, subtitle: subtitle, coordinate: coordinate)
     }
 
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {

@@ -113,12 +113,14 @@ enum ParkingMapTestFixtures {
     static func viewModel(
         location: MockLocationClient? = nil,
         recents: RecentsStore? = nil,
+        geocoding: MockGeocodingClient? = nil,
         dataset: ParkingDataset? = nil,
         now: @escaping () -> Date = Date.init
     ) -> ParkingMapViewModel {
         ParkingMapViewModel(
             locationClient: location ?? MockLocationClient(),
             recentsStore: recents ?? recentsStore(),
+            geocodingClient: geocoding ?? MockGeocodingClient(),
             now: now,
             dataset: dataset ?? queenStreetDataset(),
             startsClock: false

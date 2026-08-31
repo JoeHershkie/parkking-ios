@@ -72,6 +72,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             viewModel.pendingCameraRegion = nil
             map.setRegion(pending, animated: true)
         }
+        context.coordinator.syncAnnotations(on: map)
         context.coordinator.syncOverlays(on: map)
     }
 
@@ -79,11 +80,50 @@ struct ParkingMapKitView: UIViewRepresentable {
         var viewModel: ParkingMapViewModel
         private var lastRenderItems: [ParkingMapRenderItem] = []
         private var lastSelectedIDs: Set<String> = []
+        private var lastSearchPinID: String?
+        private var lastTapDotID: String?
         private var colorOverlays: [ParkingOverlayBucketKind: ParkingStyledOverlay] = [:]
         private var selectedOverlays: [ParkingStyledOverlay] = []
 
         init(viewModel: ParkingMapViewModel) {
             self.viewModel = viewModel
+        }
+
+        func syncAnnotations(on map: MKMapView) {
+            let currentPin = viewModel.searchPin
+            let currentPinID = currentPin?.id
+
+            let currentDot = viewModel.tapDot
+            let currentDotID = currentDot?.id
+
+            if currentPinID != lastSearchPinID {
+                lastSearchPinID = currentPinID
+
+                let existingSearchPins = map.annotations.compactMap { $0 as? SearchPinAnnotation }
+                if !existingSearchPins.isEmpty {
+                    map.removeAnnotations(existingSearchPins)
+                }
+
+                if let currentPin {
+                    map.addAnnotation(currentPin)
+                    map.selectAnnotation(currentPin, animated: true)
+                }
+            }
+
+            if currentDotID != lastTapDotID {
+                lastTapDotID = currentDotID
+
+                let existingDots = map.annotations.compactMap { $0 as? TapDotAnnotation }
+                if !existingDots.isEmpty {
+                    map.removeAnnotations(existingDots)
+                }
+
+                if let currentDot {
+                    map.addAnnotation(currentDot)
+                }
+            } else if let currentDot, let dotView = map.view(for: currentDot) as? TapDotAnnotationView {
+                dotView.configure(with: currentDot)
+            }
         }
 
         func syncOverlays(on map: MKMapView) {
@@ -162,6 +202,45 @@ struct ParkingMapKitView: UIViewRepresentable {
             }
         }
 
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if let pinAnnotation = annotation as? SearchPinAnnotation {
+                let identifier = "SearchPinAnnotationView"
+                let markerView: MKMarkerAnnotationView
+                if let dequeued = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView {
+                    markerView = dequeued
+                    markerView.annotation = pinAnnotation
+                } else {
+                    markerView = MKMarkerAnnotationView(annotation: pinAnnotation, reuseIdentifier: identifier)
+                }
+
+                markerView.markerTintColor = .systemRed
+                markerView.glyphTintColor = .white
+                markerView.glyphImage = UIImage(systemName: "mappin")
+                markerView.animatesWhenAdded = true
+                markerView.canShowCallout = true
+                markerView.displayPriority = .required
+                markerView.titleVisibility = .adaptive
+                markerView.subtitleVisibility = .adaptive
+
+                return markerView
+            }
+
+            if let dotAnnotation = annotation as? TapDotAnnotation {
+                let dotView: TapDotAnnotationView
+                if let dequeued = mapView.dequeueReusableAnnotationView(withIdentifier: TapDotAnnotationView.reuseID) as? TapDotAnnotationView {
+                    dotView = dequeued
+                    dotView.annotation = dotAnnotation
+                } else {
+                    dotView = TapDotAnnotationView(annotation: dotAnnotation, reuseIdentifier: TapDotAnnotationView.reuseID)
+                }
+                dotView.configure(with: dotAnnotation)
+                dotView.displayPriority = .required
+                return dotView
+            }
+
+            return nil
+        }
+
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let styled = overlay as? ParkingStyledOverlay else {
                 return MKOverlayRenderer(overlay: overlay)
@@ -193,9 +272,58 @@ struct ParkingMapKitView: UIViewRepresentable {
 
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            if let view = touch.view {
+                if view is TapDotAnnotationView || view.superview is TapDotAnnotationView {
+                    return true
+                }
+                if view is MKAnnotationView || view.superview is MKAnnotationView {
+                    return false
+                }
+            }
+            return true
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
             false
         }
     }
 }
+
+final class TapDotAnnotationView: MKAnnotationView {
+    static let reuseID = "TapDotAnnotationView"
+    private let dotView = UIView()
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        setupView()
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+        setupView()
+    }
+
+    private func setupView() {
+        frame = CGRect(x: 0, y: 0, width: 16, height: 16)
+        centerOffset = CGPoint(x: 0, y: 0)
+        backgroundColor = .clear
+
+        dotView.frame = bounds
+        dotView.layer.cornerRadius = 8
+        dotView.layer.borderWidth = 2
+        dotView.layer.borderColor = UIColor.black.cgColor
+        dotView.layer.masksToBounds = true
+        dotView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(dotView)
+    }
+
+    func configure(with dotAnnotation: TapDotAnnotation) {
+        dotView.backgroundColor = dotAnnotation.color
+    }
+}
+

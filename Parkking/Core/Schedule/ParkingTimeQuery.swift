@@ -103,7 +103,7 @@ enum ParkingTimeQuery {
                 effectiveEndMinute: nil,
                 requestedDurationMinutes: requested,
                 truncatedAtMidnight: false,
-                label: formatSlotLabel(slot, endMinuteOfDay: nil)
+                label: formatSlotLabel(slot, endMinuteOfDay: nil, now: now, timeZone: timeZone)
             )
         }
 
@@ -117,7 +117,7 @@ enum ParkingTimeQuery {
             effectiveEndMinute: effectiveEndMinute,
             requestedDurationMinutes: requested,
             truncatedAtMidnight: truncatedAtMidnight,
-            label: formatSlotLabel(slot, endMinuteOfDay: effectiveEndMinute)
+            label: formatSlotLabel(slot, endMinuteOfDay: effectiveEndMinute, now: now, timeZone: timeZone)
         )
     }
 
@@ -253,24 +253,56 @@ enum ParkingTimeQuery {
         return start + query.requestedDurationMinutes > midnightMinute
     }
 
+    nonisolated static func formatTime(_ minuteOfDay: Int) -> String {
+        let hour24 = minuteOfDay / 60
+        let minute = minuteOfDay % 60
+        let hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12
+        let ampm = hour24 < 12 ? "am" : "pm"
+        return String(format: "%d:%02d%@", hour12, minute, ampm)
+    }
+
     nonisolated static func formatSlotLabel(
         _ slot: Slot,
-        endMinuteOfDay: Int?
+        endMinuteOfDay: Int?,
+        now: Date = Date(),
+        timeZone: TimeZone = torontoTimeZone
     ) -> String {
-        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        let h = slot.minuteOfDay / 60
-        let m = slot.minuteOfDay % 60
-        let startTime = String(format: "%02d:%02d", h, m)
-        let day = dayNames[max(0, min(6, slot.dayOfWeek))]
-        let datePart = slotToDateString(slot)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
 
-        guard let endMinuteOfDay, endMinuteOfDay > slot.minuteOfDay else {
-            return "\(day) \(datePart) \(startTime)"
+        let nowComponents = calendar.dateComponents([.year, .month, .day], from: now)
+        let nowYear = nowComponents.year ?? 2026
+        let slotYear = slot.year ?? nowYear
+
+        var slotComponents = DateComponents()
+        slotComponents.year = slotYear
+        slotComponents.month = slot.month
+        slotComponents.day = slot.dayOfMonth
+
+        let startOfNow = calendar.date(from: nowComponents) ?? now
+        let startOfSlot = calendar.date(from: slotComponents) ?? now
+        let daysDifference = calendar.dateComponents([.day], from: startOfNow, to: startOfSlot).day ?? 0
+
+        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let dayName = dayNames[max(0, min(6, slot.dayOfWeek))]
+
+        let datePrefix: String
+        if daysDifference == 0 {
+            datePrefix = "Today"
+        } else if daysDifference >= 1 && daysDifference <= 6 {
+            datePrefix = dayName
+        } else if slotYear == nowYear {
+            datePrefix = String(format: "%@ %02d-%02d", dayName, slot.month, slot.dayOfMonth)
+        } else {
+            datePrefix = String(format: "%@ %04d-%02d-%02d", dayName, slotYear, slot.month, slot.dayOfMonth)
         }
 
-        let eh = endMinuteOfDay / 60
-        let em = endMinuteOfDay % 60
-        let endTime = String(format: "%02d:%02d", eh, em)
-        return "\(day) \(datePart) \(startTime)–\(endTime)"
+        let startFormatted = formatTime(slot.minuteOfDay)
+        if let endMinuteOfDay, endMinuteOfDay > slot.minuteOfDay {
+            let endFormatted = formatTime(endMinuteOfDay)
+            return "\(datePrefix) from \(startFormatted) - \(endFormatted)"
+        } else {
+            return "\(datePrefix) from \(startFormatted)"
+        }
     }
 }

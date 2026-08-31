@@ -5,7 +5,7 @@ enum ParkingLabels {
         "no_parking": "No parking",
         "no_stopping": "No stopping",
         "no_standing": "No standing",
-        "restricted_periods": "Restricted periods",
+        "restricted_periods": "Allowed periods",
     ]
 
     nonisolated static func scheduleCategoryLabel(_ category: String) -> String {
@@ -13,6 +13,39 @@ enum ParkingLabels {
             return label
         }
         return category.replacingOccurrences(of: "_", with: " ")
+    }
+
+    nonisolated static func formatAllowedPeriodDuration(max: String?, maxMinutes: Int?) -> String? {
+        if let maxMinutes, maxMinutes > 0 {
+            if maxMinutes % 60 == 0 {
+                let hours = maxMinutes / 60
+                return "\(hours) hr"
+            } else if maxMinutes < 60 {
+                return "\(maxMinutes) min"
+            } else {
+                let h = maxMinutes / 60
+                let m = maxMinutes % 60
+                return "\(h) hr \(m) min"
+            }
+        }
+        guard let max, !max.isEmpty else { return nil }
+        let lower = max.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if lower == "1 hour" || lower == "1 hr" || lower == "1 hr." || lower == "1h" {
+            return "1 hr"
+        }
+        if lower.contains("hour") || lower.contains("hr") {
+            let digits = lower.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            if !digits.isEmpty {
+                return "\(digits) hr"
+            }
+        }
+        if lower.contains("min") {
+            let digits = lower.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+            if !digits.isEmpty {
+                return "\(digits) min"
+            }
+        }
+        return max
     }
 
     nonisolated static func formatMax(_ max: String?) -> String? {

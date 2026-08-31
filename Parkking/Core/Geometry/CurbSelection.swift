@@ -92,7 +92,9 @@ nonisolated struct SelectionResult: Sendable, Equatable {
 
 nonisolated enum CurbSelection {
     /// Buffer radius for curb tap selection (10 m).
-    nonisolated static let tapMaxDistanceMeters: Double = 10
+    nonisolated static let tapMaxDistanceMeters: Double = 15
+    /// Buffer radius for search / pin snapping to nearest street segment (250 m).
+    nonisolated static let searchMaxDistanceMeters: Double = 250
     /// Along-street grouping of the same curb side around the tap.
     nonisolated static let localClusterMeters: Double = 120
 

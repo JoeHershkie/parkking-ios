@@ -159,11 +159,11 @@ enum CurbVerdictComposer {
     ) -> String {
         switch kind {
         case .noStopping:
-            return "No stopping is in effect for part of this interval."
+            return "No stopping"
         case .noStanding:
-            return "No standing is in effect for part of this interval."
+            return "No standing"
         case .noParking:
-            return "No parking is in effect for part of this interval."
+            return "No parking"
         case .permittedWindow:
             return polarity == .notPermitted
                 ? "Outside the permitted parking window."

@@ -19,7 +19,10 @@ struct BylawCopyControllerTests {
         #expect(controller.title(for: "rule-1") == "Copied")
         #expect(controller.isShowingConfirmation)
         #expect(announcements == ["Copied"])
-        try? await Task.sleep(nanoseconds: 40_000_000)
+        for _ in 0..<20 {
+            if controller.copiedKey == nil { break }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
         #expect(controller.copiedKey == nil)
         #expect(controller.title(for: "rule-1") == "Copy")
     }
