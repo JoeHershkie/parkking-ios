@@ -9,9 +9,8 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
     case unclearUncertain
     case restricted
     case restrictedUncertain
-    case selected
 
-    /// Draw allowed first, restrictions last, selection on top.
+    /// Draw allowed first, then unclear, restrictions last.
     nonisolated static let drawOrder: [ParkingOverlayBucketKind] = [
         .allowed,
         .allowedUncertain,
@@ -19,12 +18,7 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
         .unclearUncertain,
         .restricted,
         .restrictedUncertain,
-        .selected,
     ]
-
-    nonisolated var isSelected: Bool {
-        self == .selected
-    }
 
     nonisolated var strokeColor: UIColor {
         switch self {
@@ -34,20 +28,12 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
             return .systemOrange
         case .restricted, .restrictedUncertain:
             return .systemRed
-        case .selected:
-            return UIColor.label.withAlphaComponent(0.85)
         }
     }
 
+    /// Base width for all regular segment types. Green and red share the same width.
     nonisolated var lineWidth: CGFloat {
-        switch self {
-        case .restricted, .restrictedUncertain:
-            return 5
-        case .selected:
-            return 8
-        default:
-            return 3
-        }
+        5
     }
 
     nonisolated var alpha: CGFloat {
@@ -69,10 +55,21 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
     }
 }
 
+enum ParkingOverlayRole: Sendable {
+    case base
+    case selectedBorder
+    case selectedFill
+}
+
 enum ParkingOverlayStyling {
+    nonisolated static let selectedLineWidth: CGFloat = 8
+    nonisolated static let selectedBorderWidth: CGFloat = 11
+    nonisolated static let selectedBorderColor: UIColor = .black
+
     struct Plan: Equatable, Sendable {
         var colorBuckets: [ParkingOverlayBucketKind: [ParkingMapRenderItem.ID]]
         var selectedIDs: [ParkingMapRenderItem.ID]
+        var selectedBuckets: [ParkingOverlayBucketKind: [ParkingMapRenderItem.ID]]
     }
 
     nonisolated static func colorKind(
@@ -96,34 +93,46 @@ enum ParkingOverlayStyling {
     }
 
     /// Color buckets keep every visible part so deselect can drop only the selected overlay.
-    /// Selected IDs are also listed separately and drawn on top.
+    /// Selected IDs and selected buckets are also grouped for layered rendering.
     nonisolated static func plan(
         items: [ParkingMapRenderItem],
         selectedFeatureIDs: Set<String>
     ) -> Plan {
         var colorBuckets: [ParkingOverlayBucketKind: [ParkingMapRenderItem.ID]] = [:]
         var selectedIDs: [ParkingMapRenderItem.ID] = []
+        var selectedBuckets: [ParkingOverlayBucketKind: [ParkingMapRenderItem.ID]] = [:]
         for item in items {
-            if selectedFeatureIDs.contains(item.id.featureID.rawValue) {
-                selectedIDs.append(item.id)
-            }
             let kind = colorKind(
                 severity: item.severity,
                 polarity: item.polarity,
                 uncertain: item.isUncertainPlacement
             )
             colorBuckets[kind, default: []].append(item.id)
+            if selectedFeatureIDs.contains(item.id.featureID.rawValue) {
+                selectedIDs.append(item.id)
+                selectedBuckets[kind, default: []].append(item.id)
+            }
         }
-        return Plan(colorBuckets: colorBuckets, selectedIDs: selectedIDs)
+        return Plan(
+            colorBuckets: colorBuckets,
+            selectedIDs: selectedIDs,
+            selectedBuckets: selectedBuckets
+        )
     }
 }
 
 final class ParkingStyledOverlay: MKMultiPolyline {
     let kind: ParkingOverlayBucketKind
+    let role: ParkingOverlayRole
     let itemIDs: [ParkingMapRenderItem.ID]
 
-    init(kind: ParkingOverlayBucketKind, items: [ParkingMapRenderItem]) {
+    init(
+        kind: ParkingOverlayBucketKind,
+        role: ParkingOverlayRole = .base,
+        items: [ParkingMapRenderItem]
+    ) {
         self.kind = kind
+        self.role = role
         self.itemIDs = items.map(\.id)
         let polylines: [MKPolyline] = items.compactMap { item in
             guard item.coordinates.count >= 2 else { return nil }
@@ -131,5 +140,30 @@ final class ParkingStyledOverlay: MKMultiPolyline {
             return MKPolyline(coordinates: &coords, count: coords.count)
         }
         super.init(polylines)
+    }
+
+    var strokeColor: UIColor {
+        switch role {
+        case .base, .selectedFill:
+            return kind.alpha == 1 ? kind.strokeColor : kind.strokeColor.withAlphaComponent(kind.alpha)
+        case .selectedBorder:
+            let alpha: CGFloat = kind.alpha == 1 ? 1.0 : 0.85
+            return alpha == 1 ? ParkingOverlayStyling.selectedBorderColor : ParkingOverlayStyling.selectedBorderColor.withAlphaComponent(alpha)
+        }
+    }
+
+    var lineWidth: CGFloat {
+        switch role {
+        case .base:
+            return kind.lineWidth
+        case .selectedFill:
+            return ParkingOverlayStyling.selectedLineWidth
+        case .selectedBorder:
+            return ParkingOverlayStyling.selectedBorderWidth
+        }
+    }
+
+    var dashPattern: [NSNumber] {
+        kind.dashPattern
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 
 /// Ontario statutory public holidays matching `date-holidays` CA/ON `type === "public"`.
 /// No third-party dependency — dates computed locally.
-enum OntarioPublicHolidays {
+nonisolated enum OntarioPublicHolidays {
     struct MonthDay: Hashable, Sendable {
         var month: Int
         var day: Int

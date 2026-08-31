@@ -10,8 +10,8 @@ struct PerformanceGateTests {
         let dataset = try ParkingDataStore.loadDataset(bundle: .main, validateHash: true)
         let elapsed = ContinuousClock.now - started
 
-        #expect(dataset.features.count == 21_424)
-        #expect(dataset.index.allFeatures().count == 21_424)
+        #expect(dataset.features.count == dataset.manifest.featureCount)
+        #expect(dataset.index.allFeatures().count == dataset.manifest.featureCount)
         // Soft gate for CI/simulator; physical-device numbers go in the PR.
         #expect(elapsed < .seconds(8))
     }

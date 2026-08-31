@@ -17,11 +17,25 @@ struct ScheduleCorpusTests {
     }
 
     @Test func sharedCorpusMembershipParity() throws {
-        let fixtures = URL(fileURLWithPath: #filePath)
+        let bundleURL = Bundle(for: BundleToken.self).url(
+            forResource: "schedule_corpus",
+            withExtension: "json",
+            subdirectory: "Fixtures"
+        ) ?? Bundle(for: BundleToken.self).url(
+            forResource: "schedule_corpus",
+            withExtension: "json"
+        )
+        let filePathURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures/schedule_corpus.json")
-        let data = try Data(contentsOf: fixtures)
+
+        guard let fixtureURL = bundleURL ?? (FileManager.default.fileExists(atPath: filePathURL.path) ? filePathURL : nil) else {
+            Issue.record("schedule_corpus.json not found in test bundle or filePath")
+            return
+        }
+
+        let data = try Data(contentsOf: fixtureURL)
         let corpus = try JSONDecoder().decode(Corpus.self, from: data)
         #expect(corpus.cases.count == 23)
 
@@ -37,3 +51,5 @@ struct ScheduleCorpusTests {
         }
     }
 }
+
+private final class BundleToken {}

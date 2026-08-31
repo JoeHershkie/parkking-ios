@@ -79,7 +79,7 @@ struct CurbSelectionTests {
         let radius = CurbSelection.tapMaxDistanceMeters
         let candidates = CurbSelection.findNearestCurbCandidates(
             features: [nearNorth, nearSouth, farSameStreet],
-            point: LngLat(lng: -79.4005, lat: 43.65005),
+            point: LngLat(lng: -79.4005, lat: 43.64995),
             maxDistanceMeters: radius
         )
         #expect(candidates.count >= 2)
@@ -146,7 +146,7 @@ struct CurbSelectionTests {
         )
         let result = CurbSelection.selectNearestCurb(
             features: [closer, adjacent],
-            point: LngLat(lng: -79.4001, lat: 43.65002)
+            point: LngLat(lng: -79.4004, lat: 43.65002)
         )
         #expect(result.selected?.featureIDs.count == 2)
         #expect(result.selected?.highlightFeatureIDs == [closer.id])
@@ -173,7 +173,7 @@ struct CurbSelectionTests {
 
         let result = CurbSelection.selectNearestCurb(
             features: [nearNorth, nearSouth],
-            point: LngLat(lng: -79.4005, lat: 43.6502)
+            point: LngLat(lng: -79.4005, lat: 43.65003)
         )
         #expect(result.selected != nil)
         #expect(result.groups.count >= 1)
@@ -181,7 +181,7 @@ struct CurbSelectionTests {
         if let other = result.groups.first(where: { $0.groupKey != result.selectedGroupKey }) {
             let preferred = CurbSelection.selectNearestCurb(
                 features: [nearNorth, nearSouth],
-                point: LngLat(lng: -79.4005, lat: 43.6502),
+                point: LngLat(lng: -79.4005, lat: 43.65003),
                 preferredGroupKey: other.groupKey
             )
             #expect(preferred.selectedGroupKey == other.groupKey)

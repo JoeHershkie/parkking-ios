@@ -1,95 +1,31 @@
 import SwiftUI
 
 struct VerdictSheet: View {
+    static let compactDetent = PresentationDetent.height(180)
+
     @Bindable var viewModel: ParkingMapViewModel
     @Binding var detent: PresentationDetent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    switch viewModel.sheetPrompt {
-                    case .loading:
-                        HStack(spacing: 12) {
-                            ProgressView()
-                            Text("Loading curb rules…")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 8)
-                        .accessibilityElement(children: .combine)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let verdict = viewModel.verdict {
+                    compactVerdict(verdict)
 
-                    case .failed(let message):
-                        ContentUnavailableView(
-                            "Couldn’t load map data",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text(message)
-                        )
-                        Button("Retry") { viewModel.retry() }
-                            .buttonStyle(.borderedProminent)
-                            .frame(minHeight: 44)
+                    if detent != VerdictSheet.compactDetent || dynamicTypeSize.isAccessibilitySize {
+                        nearbySidesSection
+                    }
 
-                    case .zoomIn:
-                        Label(
-                            viewModel.sheetPrompt.coachingText
-                                ?? "Zoom in to see parking availability",
-                            systemImage: "plus.magnifyingglass"
-                        )
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    case .tapPrompt:
-                        Label(
-                            viewModel.sheetPrompt.coachingText ?? "Tap to find parking",
-                            systemImage: "hand.tap"
-                        )
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    case .verdict:
-                        if let verdict = viewModel.verdict {
-                            compactVerdict(verdict)
-                            if viewModel.sheetExpanded
-                                || detent != .height(180)
-                                || dynamicTypeSize.isAccessibilitySize
-                            {
-                                expandedContent(verdict)
-                            } else {
-                                Button {
-                                    viewModel.sheetExpanded = true
-                                    detent = .medium
-                                } label: {
-                                    Label("Show rule details", systemImage: "chevron.up")
-                                        .frame(maxWidth: .infinity, minHeight: 44)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
+                    if detent == .large || dynamicTypeSize.isAccessibilitySize || viewModel.sheetExpanded {
+                        ruleDetailsSection(verdict)
                     }
                 }
-                .padding()
             }
-            .toolbar(.hidden, for: .navigationBar)
-        }
-        .sheet(item: $viewModel.presentedModal) { modal in
-            switch modal {
-            case .location:
-                LocationSheet(viewModel: viewModel)
-            case .time:
-                TimeSheet(query: viewModel.appliedTimeQuery) { query in
-                    viewModel.applyTimeQuery(query)
-                }
-            }
-        }
-        .onChange(of: viewModel.presentedModal) { _, modal in
-            if modal == nil {
-                detent = .height(180)
-            }
+            .padding()
         }
         .onAppear {
-            if dynamicTypeSize.isAccessibilitySize, detent == .height(180) {
+            if dynamicTypeSize.isAccessibilitySize, detent == VerdictSheet.compactDetent {
                 detent = .medium
             }
         }
@@ -107,12 +43,6 @@ struct VerdictSheet: View {
                 Text(verdict.street ?? "Selected location")
                     .font(.headline)
                     .lineLimit(2)
-                if let side = verdict.sideDisplay {
-                    Text(side)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Side: \(side)")
-                }
                 Text(verdict.headline)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(statusColor(verdict.status))
@@ -124,9 +54,21 @@ struct VerdictSheet: View {
                         .accessibilityLabel("Interval: \(label)")
                 }
             }
+
             Spacer(minLength: 0)
+
+            Button {
+                viewModel.dismissResult()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
         }
-        .accessibilityElement(children: .combine)
 
         if let reason = verdict.primaryReason {
             Text(reason)
@@ -160,7 +102,7 @@ struct VerdictSheet: View {
     }
 
     @ViewBuilder
-    private func expandedContent(_ verdict: CurbVerdict) -> some View {
+    private var nearbySidesSection: some View {
         let rows = viewModel.nearbyStreetRows
         if rows.contains(where: { $0.sides.count > 0 }),
            (viewModel.selection?.groups.count ?? 0) > 1
@@ -185,12 +127,16 @@ struct VerdictSheet: View {
                 }
             }
         }
+    }
 
-        DisclosureGroup(
-            "Rule details (\(verdict.contributingRules.count))",
-            isExpanded: $viewModel.sheetExpanded
-        ) {
-            RuleDetailsView(rules: dedupedRules(verdict.contributingRules))
+    @ViewBuilder
+    private func ruleDetailsSection(_ verdict: CurbVerdict) -> some View {
+        let rules = dedupedRules(verdict.contributingRules)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rule details (\(rules.count))")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            RuleDetailsView(rules: rules)
         }
     }
 
@@ -259,7 +205,7 @@ struct VerdictSheet: View {
             verdict: .preview(
                 status: .parkingAllowed,
                 headline: "Parking allowed",
-                reason: "Mapped rules permit this interval."
+                reason: nil
             )
         ),
         detent: .constant(.medium)
@@ -301,7 +247,7 @@ struct VerdictSheet: View {
                 reason: "No mapped restriction found; data may be incomplete."
             )
         ),
-        detent: .constant(.height(180))
+        detent: .constant(VerdictSheet.compactDetent)
     )
 }
 
@@ -321,7 +267,7 @@ private extension CurbVerdict {
     static func preview(
         status: CurbVerdictStatus,
         headline: String,
-        reason: String
+        reason: String?
     ) -> CurbVerdict {
         CurbVerdict(
             status: status,

@@ -9,15 +9,15 @@ final class BylawCopyController {
 
     private(set) var copiedKey: String?
 
-    private let write: (String) -> Void
+    private let write: @MainActor (String) -> Void
     private let resetNanoseconds: UInt64
-    private let announce: (String) -> Void
+    private let announce: @MainActor (String) -> Void
     private var generation = 0
 
     init(
-        write: @escaping (String) -> Void = { UIPasteboard.general.string = $0 },
+        write: @MainActor @escaping (String) -> Void = { UIPasteboard.general.string = $0 },
         resetNanoseconds: UInt64 = BylawCopyController.confirmationNanoseconds,
-        announce: @escaping (String) -> Void = { message in
+        announce: @MainActor @escaping (String) -> Void = { message in
             UIAccessibility.post(notification: .announcement, argument: message)
         }
     ) {
@@ -33,8 +33,9 @@ final class BylawCopyController {
         let captured = generation
         announce("Copied")
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: resetNanoseconds)
-            guard let self, captured == self.generation else { return }
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: self.resetNanoseconds)
+            guard captured == self.generation else { return }
             self.copiedKey = nil
         }
     }

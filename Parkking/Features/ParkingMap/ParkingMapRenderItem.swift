@@ -2,7 +2,7 @@ import CoreLocation
 import Foundation
 import MapKit
 
-struct ParkingMapRenderItem: Identifiable, Sendable, Equatable {
+nonisolated struct ParkingMapRenderItem: Identifiable, Sendable, Equatable {
     struct ID: Hashable, Sendable {
         var featureID: FeatureID
         var partIndex: Int

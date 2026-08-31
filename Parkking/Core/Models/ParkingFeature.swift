@@ -2,7 +2,7 @@ import CoreLocation
 import Foundation
 
 /// Snapshot-local feature identity from `_id`, or `idx:<n>` when `_id` is missing.
-struct FeatureID: Hashable, Codable, Sendable, Comparable {
+nonisolated struct FeatureID: Hashable, Codable, Sendable, Comparable {
     let rawValue: String
 
     nonisolated init(_ rawValue: String) {
@@ -26,7 +26,7 @@ struct FeatureID: Hashable, Codable, Sendable, Comparable {
 }
 
 /// Stable source-derived key: Highway|Rule|Side|category|max
-struct RuleKey: Hashable, Codable, Sendable {
+nonisolated struct RuleKey: Hashable, Codable, Sendable {
     let rawValue: String
 
     nonisolated init(_ rawValue: String) {
@@ -50,7 +50,7 @@ struct RuleKey: Hashable, Codable, Sendable {
     }
 }
 
-enum ParkingGeometry: Sendable, Equatable, Codable {
+nonisolated enum ParkingGeometry: Sendable, Equatable, Codable {
     case lineString(coordinates: [[Double]])
     case multiLineString(coordinates: [[[Double]]])
 
@@ -62,7 +62,7 @@ enum ParkingGeometry: Sendable, Equatable, Codable {
     }
 }
 
-struct ParkingProperties: Sendable, Equatable, Codable {
+nonisolated struct ParkingProperties: Sendable, Equatable, Codable {
     var highway: String
     var rule: String
     var scheduleCategory: String
@@ -190,7 +190,7 @@ struct ParkingProperties: Sendable, Equatable, Codable {
     }
 }
 
-struct ParkingFeature: Sendable, Equatable, Identifiable {
+nonisolated struct ParkingFeature: Sendable, Equatable, Identifiable {
     var id: FeatureID
     var geometry: ParkingGeometry
     var properties: ParkingProperties
@@ -223,7 +223,7 @@ struct ParkingFeature: Sendable, Equatable, Identifiable {
     }
 }
 
-struct ParkingFeatureCollection: Sendable, Equatable {
+nonisolated struct ParkingFeatureCollection: Sendable, Equatable {
     var features: [ParkingFeature]
 
     nonisolated init(features: [ParkingFeature]) {

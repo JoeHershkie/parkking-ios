@@ -132,7 +132,7 @@ final class MapKitSearchClient: NSObject, PlaceSearching, MKLocalSearchCompleter
         guard let item = response.mapItems.first else {
             throw MapKitSearchError.noCoordinate
         }
-        let coordinate = try MapKitSearchConfiguration.validatedCoordinate(item.placemark.coordinate)
+        let coordinate = try MapKitSearchConfiguration.validatedCoordinate(item.location.coordinate)
         let label = completion.title.isEmpty
             ? (item.name ?? completion.subtitle)
             : completion.title
@@ -163,7 +163,15 @@ final class MapKitSearchClient: NSObject, PlaceSearching, MKLocalSearchCompleter
             self.rawCompletions = []
             self.completions = []
             self.isSearching = false
-            self.errorMessage = error.localizedDescription
+            let nsError = error as NSError
+            if nsError.domain == MKErrorDomain && (
+                nsError.code == MKError.directionsNotFound.rawValue ||
+                nsError.code == MKError.placemarkNotFound.rawValue
+            ) {
+                self.errorMessage = nil
+            } else {
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 

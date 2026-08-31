@@ -80,7 +80,7 @@ struct ParkingMapKitView: UIViewRepresentable {
         private var lastRenderItems: [ParkingMapRenderItem] = []
         private var lastSelectedIDs: Set<String> = []
         private var colorOverlays: [ParkingOverlayBucketKind: ParkingStyledOverlay] = [:]
-        private var selectedOverlay: ParkingStyledOverlay?
+        private var selectedOverlays: [ParkingStyledOverlay] = []
 
         init(viewModel: ParkingMapViewModel) {
             self.viewModel = viewModel
@@ -108,7 +108,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             }
 
             if itemsChanged || selectionChanged {
-                replaceSelectedOverlay(on: map, plan: plan, byID: byID)
+                replaceSelectedOverlays(on: map, plan: plan, byID: byID)
                 lastSelectedIDs = selectedIDs
             }
         }
@@ -120,30 +120,46 @@ struct ParkingMapKitView: UIViewRepresentable {
         ) {
             map.removeOverlays(Array(colorOverlays.values))
             colorOverlays.removeAll(keepingCapacity: true)
-            for kind in ParkingOverlayBucketKind.drawOrder where !kind.isSelected {
+            for kind in ParkingOverlayBucketKind.drawOrder {
                 guard let ids = plan.colorBuckets[kind], !ids.isEmpty else { continue }
                 let groupItems = ids.compactMap { byID[$0] }
                 guard !groupItems.isEmpty else { continue }
-                let overlay = ParkingStyledOverlay(kind: kind, items: groupItems)
+                let overlay = ParkingStyledOverlay(kind: kind, role: .base, items: groupItems)
                 colorOverlays[kind] = overlay
                 map.addOverlay(overlay, level: .aboveRoads)
             }
         }
 
-        private func replaceSelectedOverlay(
+        private func replaceSelectedOverlays(
             on map: MKMapView,
             plan: ParkingOverlayStyling.Plan,
             byID: [ParkingMapRenderItem.ID: ParkingMapRenderItem]
         ) {
-            if let selectedOverlay {
-                map.removeOverlay(selectedOverlay)
-                self.selectedOverlay = nil
+            if !selectedOverlays.isEmpty {
+                map.removeOverlays(selectedOverlays)
+                selectedOverlays.removeAll(keepingCapacity: true)
             }
-            let groupItems = plan.selectedIDs.compactMap { byID[$0] }
-            guard !groupItems.isEmpty else { return }
-            let overlay = ParkingStyledOverlay(kind: .selected, items: groupItems)
-            selectedOverlay = overlay
-            map.addOverlay(overlay, level: .aboveLabels)
+            guard !plan.selectedIDs.isEmpty else { return }
+
+            // 1. Add border overlays first (rendered under fill)
+            for kind in ParkingOverlayBucketKind.drawOrder {
+                guard let ids = plan.selectedBuckets[kind], !ids.isEmpty else { continue }
+                let groupItems = ids.compactMap { byID[$0] }
+                guard !groupItems.isEmpty else { continue }
+                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedBorder, items: groupItems)
+                selectedOverlays.append(overlay)
+                map.addOverlay(overlay, level: .aboveLabels)
+            }
+
+            // 2. Add fill overlays second (rendered on top of border with item's color at thickness 8)
+            for kind in ParkingOverlayBucketKind.drawOrder {
+                guard let ids = plan.selectedBuckets[kind], !ids.isEmpty else { continue }
+                let groupItems = ids.compactMap { byID[$0] }
+                guard !groupItems.isEmpty else { continue }
+                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedFill, items: groupItems)
+                selectedOverlays.append(overlay)
+                map.addOverlay(overlay, level: .aboveLabels)
+            }
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -151,12 +167,12 @@ struct ParkingMapKitView: UIViewRepresentable {
                 return MKOverlayRenderer(overlay: overlay)
             }
             let renderer = MKMultiPolylineRenderer(multiPolyline: styled)
-            renderer.strokeColor = styled.kind.strokeColor.withAlphaComponent(styled.kind.alpha)
-            renderer.lineWidth = styled.kind.lineWidth
+            renderer.strokeColor = styled.strokeColor
+            renderer.lineWidth = styled.lineWidth
             renderer.lineCap = .round
             renderer.lineJoin = .round
-            if !styled.kind.dashPattern.isEmpty {
-                renderer.lineDashPattern = styled.kind.dashPattern
+            if !styled.dashPattern.isEmpty {
+                renderer.lineDashPattern = styled.dashPattern
             }
             return renderer
         }

@@ -4,13 +4,6 @@ import MapKit
 import Observation
 import UIKit
 
-enum MapModal: String, Identifiable, Equatable {
-    case location
-    case time
-
-    var id: String { rawValue }
-}
-
 enum SelectionSource: Equatable, Sendable {
     case tap
     case search
@@ -22,6 +15,7 @@ enum SelectionSource: Equatable, Sendable {
 @Observable
 final class ParkingMapViewModel {
     enum SheetPrompt: Equatable {
+        case idle
         case loading
         case failed(String)
         case zoomIn
@@ -48,11 +42,12 @@ final class ParkingMapViewModel {
     var curbVisible = false
     var selection: SelectionResult?
     var verdict: CurbVerdict?
+    var isResultPresented = false
+    var hasTappedSegmentThisSession = false
     var appliedTimeQuery: TimeQuery
     var resolvedQuery: ResolvedTimeQuery?
     var timeChip: String = "Now · 1h"
     var sheetExpanded = false
-    var presentedModal: MapModal?
     var locationLabel = "Search or tap the map"
     var recents: [SavedLocation] = []
     var isLocating = false
@@ -87,8 +82,9 @@ final class ParkingMapViewModel {
             return .failed(message)
         case .loaded:
             if !curbVisible { return .zoomIn }
-            if verdict == nil { return .tapPrompt }
-            return .verdict
+            if verdict != nil { return .verdict }
+            if !hasTappedSegmentThisSession { return .tapPrompt }
+            return .idle
         }
     }
 
@@ -152,6 +148,7 @@ final class ParkingMapViewModel {
     }
 
     func sceneBecameActive() {
+        hasTappedSegmentThisSession = false
         if startsClock {
             startClock()
         }
@@ -199,7 +196,6 @@ final class ParkingMapViewModel {
     ) -> Bool {
         guard ParkingMapConstants.contains(coordinate) else { return false }
         selectAtPoint(coordinate: coordinate, label: label, source: source)
-        presentedModal = nil
         return true
     }
 
@@ -207,8 +203,19 @@ final class ParkingMapViewModel {
         var next = query
         next.requestedDurationMinutes = ParkingTimeQuery.clampDuration(next.requestedDurationMinutes)
         appliedTimeQuery = next
-        presentedModal = nil
         resolveAppliedQuery(recomputeViewport: true)
+    }
+
+    func dismissResult() {
+        isResultPresented = false
+        selection = nil
+        verdict = nil
+        selectedFeatureIDs = []
+        locationLabel = "Search or tap the map"
+    }
+
+    func clearSelection() {
+        dismissResult()
     }
 
     func tapLocate() {
@@ -332,6 +339,16 @@ final class ParkingMapViewModel {
 
         syncSelectedFeatureIDs()
         recomputeVerdict()
+
+        if source == .tap {
+            isResultPresented = result.selected != nil
+            if result.selected != nil {
+                hasTappedSegmentThisSession = true
+            }
+        } else {
+            isResultPresented = false
+        }
+
         if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
         }

@@ -1,54 +1,97 @@
 import SwiftUI
 
-struct LocationSheet: View {
+struct SearchSheet: View {
     @Bindable var viewModel: ParkingMapViewModel
-    @Environment(\.dismiss) private var dismiss
+    @Binding var detent: PresentationDetent
     @State private var searchClient = MapKitSearchClient()
     @State private var query = ""
     @State private var resolveError: String?
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        NavigationStack {
-            List {
-                if let message = resolveError ?? searchClient.errorMessage {
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .listRowSeparator(.hidden)
-                        .accessibilityAddTraits(.isStaticText)
-                }
+        VStack(spacing: 0) {
+            searchBar
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
 
-                if searchClient.isSearching {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                        Text("Searching…")
-                            .foregroundStyle(.secondary)
-                    }
-                    .listRowSeparator(.hidden)
-                    .accessibilityElement(children: .combine)
-                }
-
-                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    recentsSection
-                } else if !searchClient.isSearching {
-                    resultsSection
-                }
-            }
-            .listStyle(.plain)
-            .navigationTitle("Location")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search Toronto address")
-            .onChange(of: query) { _, value in
-                resolveError = nil
-                searchClient.updateQuery(value)
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .frame(minHeight: 44)
-                }
+            if detent != .height(76) || isSearchFocused {
+                contentList
             }
         }
+        .onChange(of: query) { _, value in
+            resolveError = nil
+            searchClient.updateQuery(value)
+        }
+        .onChange(of: isSearchFocused) { _, isFocused in
+            if isFocused {
+                detent = .large
+            }
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            TextField("Search Toronto address", text: $query)
+                .font(.system(size: 17, weight: .regular))
+                .textFieldStyle(.plain)
+                .focused($isSearchFocused)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                    resolveError = nil
+                    searchClient.updateQuery("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search text")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
+    }
+
+    private var contentList: some View {
+        List {
+            if let message = resolveError ?? searchClient.errorMessage {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                    .listRowSeparator(.hidden)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+
+            if searchClient.isSearching {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Searching…")
+                        .foregroundStyle(.secondary)
+                }
+                .listRowSeparator(.hidden)
+                .accessibilityElement(children: .combine)
+            }
+
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                recentsSection
+            } else if !searchClient.isSearching {
+                resultsSection
+            }
+        }
+        .listStyle(.plain)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder
@@ -132,12 +175,13 @@ struct LocationSheet: View {
 
     private func pickRecent(_ recent: SavedLocation) {
         resolveError = nil
+        isSearchFocused = false
+        detent = .height(76)
         _ = viewModel.selectSearchResult(
             label: recent.label,
             coordinate: recent.coordinate,
             source: .recent
         )
-        dismiss()
     }
 
     private func pickCompletion(_ completion: PlaceCompletion) async {
@@ -150,7 +194,10 @@ struct LocationSheet: View {
                 source: .search
             )
             if accepted {
-                dismiss()
+                query = ""
+                searchClient.updateQuery("")
+                isSearchFocused = false
+                detent = .height(76)
             } else {
                 resolveError = MapKitSearchError.outOfCoverage.localizedDescription
             }
@@ -158,4 +205,13 @@ struct LocationSheet: View {
             resolveError = error.localizedDescription
         }
     }
+}
+
+typealias LocationSheet = SearchSheet
+
+#Preview {
+    SearchSheet(
+        viewModel: ParkingMapViewModel(startsClock: false),
+        detent: .constant(.medium)
+    )
 }

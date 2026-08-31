@@ -1,6 +1,6 @@
 import Foundation
 
-enum ScheduleStatus: String, Sendable, Codable, Equatable {
+nonisolated enum ScheduleStatus: String, Sendable, Codable, Equatable {
     case anytime
     case ok
     case partial
@@ -16,7 +16,7 @@ enum ScheduleStatus: String, Sendable, Codable, Equatable {
     }
 }
 
-enum ScheduleCategory: String, Sendable, Codable, Equatable {
+nonisolated enum ScheduleCategory: String, Sendable, Codable, Equatable {
     case noParking = "no_parking"
     case noStopping = "no_stopping"
     case noStanding = "no_standing"
@@ -39,7 +39,7 @@ enum ScheduleCategory: String, Sendable, Codable, Equatable {
     }
 }
 
-enum FilterPolarity: String, Sendable, Codable, Equatable {
+nonisolated enum FilterPolarity: String, Sendable, Codable, Equatable {
     case restricted
     case permitted
     case notPermitted = "not_permitted"
@@ -47,7 +47,7 @@ enum FilterPolarity: String, Sendable, Codable, Equatable {
     case inactive
 }
 
-struct Slot: Sendable, Hashable, Codable, Equatable {
+nonisolated struct Slot: Sendable, Hashable, Codable, Equatable {
     /// 0 = Sunday … 6 = Saturday
     var dayOfWeek: Int
     var minuteOfDay: Int
@@ -70,7 +70,7 @@ struct Slot: Sendable, Hashable, Codable, Equatable {
     }
 }
 
-struct CalendarMonthRange: Sendable, Hashable, Codable, Equatable {
+nonisolated struct CalendarMonthRange: Sendable, Hashable, Codable, Equatable {
     var startMonth: Int
     var startDay: Int
     var endMonth: Int
@@ -84,12 +84,12 @@ struct CalendarMonthRange: Sendable, Hashable, Codable, Equatable {
     }
 }
 
-enum DayOfMonthEnd: Sendable, Hashable, Equatable {
+nonisolated enum DayOfMonthEnd: Sendable, Hashable, Equatable {
     case day(Int)
     case last
 }
 
-struct CalendarDayOfMonthRange: Sendable, Hashable, Equatable {
+nonisolated struct CalendarDayOfMonthRange: Sendable, Hashable, Equatable {
     var start: Int
     var end: DayOfMonthEnd
 
@@ -99,7 +99,7 @@ struct CalendarDayOfMonthRange: Sendable, Hashable, Equatable {
     }
 }
 
-struct ScheduleCalendar: Sendable, Hashable, Equatable {
+nonisolated struct ScheduleCalendar: Sendable, Hashable, Equatable {
     var monthRanges: [CalendarMonthRange]?
     var dayOfMonthRanges: [CalendarDayOfMonthRange]?
     var months: [Int]?
@@ -115,7 +115,7 @@ struct ScheduleCalendar: Sendable, Hashable, Equatable {
     }
 }
 
-struct TimeWindow: Sendable, Hashable, Equatable {
+nonisolated struct TimeWindow: Sendable, Hashable, Equatable {
     var days: [Int]
     var startMinute: Int
     var endMinute: Int
@@ -137,7 +137,7 @@ struct TimeWindow: Sendable, Hashable, Equatable {
     }
 }
 
-struct ScheduleFlags: Sendable, Hashable, Codable, Equatable {
+nonisolated struct ScheduleFlags: Sendable, Hashable, Codable, Equatable {
     var exceptPublicHolidays: Bool?
 
     nonisolated init(exceptPublicHolidays: Bool? = nil) {
@@ -149,7 +149,7 @@ struct ScheduleFlags: Sendable, Hashable, Codable, Equatable {
     }
 }
 
-struct Schedule: Sendable, Hashable, Equatable {
+nonisolated struct Schedule: Sendable, Hashable, Equatable {
     var v: Int
     var status: ScheduleStatus
     var source: String
@@ -180,7 +180,7 @@ struct Schedule: Sendable, Hashable, Equatable {
     }
 }
 
-struct SlotEvaluation: Sendable, Equatable {
+nonisolated struct SlotEvaluation: Sendable, Equatable {
     var visible: Bool
     var polarity: FilterPolarity
     var unparsed: Bool

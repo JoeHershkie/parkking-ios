@@ -3,13 +3,11 @@ import SwiftUI
 struct MapFloatingChrome: View {
     @Bindable var viewModel: ParkingMapViewModel
 
+    @State var isPressed = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                locationButton
-                timeButton
-                gpsButton
-            }
+        VStack(spacing: 10) {
+            coachingPromptPill
+                .frame(maxWidth: .infinity, alignment: .center)
 
             if let error = viewModel.locationError {
                 LocationPermissionBanner(
@@ -18,68 +16,80 @@ struct MapFloatingChrome: View {
                     onOpenSettings: { viewModel.openSettings() }
                 )
             }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                gpsButton
+            }
+            .padding(.trailing, 16)
+            .padding(.bottom, 90)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .padding(.top, 8)
     }
 
-    private var locationButton: some View {
-        Button {
-            viewModel.presentedModal = .location
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "mappin")
-                    .font(.body.weight(.semibold))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Location")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.locationLabel)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+    @ViewBuilder
+    private var coachingPromptPill: some View {
+        if !viewModel.isResultPresented {
+            switch viewModel.sheetPrompt {
+            case .loading:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading curb rules…")
+                        .font(.subheadline.weight(.medium))
                 }
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(!viewModel.isDataReady)
-        .accessibilityLabel("Location")
-        .accessibilityValue(viewModel.locationLabel)
-        .accessibilityHint("Search for a Toronto address")
-    }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                .accessibilityElement(children: .combine)
 
-    private var timeButton: some View {
-        Button {
-            viewModel.presentedModal = .time
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "clock")
-                    .font(.body.weight(.semibold))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Time")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.timeChip)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+            case .failed(let message):
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text(message)
+                        .font(.subheadline.weight(.medium))
                         .lineLimit(1)
+                    Button("Retry") {
+                        viewModel.retry()
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+
+            case .zoomIn:
+                if let text = viewModel.sheetPrompt.coachingText {
+                    Label(text, systemImage: "plus.magnifyingglass")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                }
+
+            case .tapPrompt:
+                if let text = viewModel.sheetPrompt.coachingText {
+                    Label(text, systemImage: "hand.tap")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                }
+
+            case .idle, .verdict:
+                EmptyView()
             }
-            .frame(minHeight: 44)
-            .padding(.horizontal, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .disabled(!viewModel.isDataReady)
-        .accessibilityLabel("Time")
-        .accessibilityValue(viewModel.timeChip)
-        .accessibilityHint("Change check time and duration")
     }
 
     private var gpsButton: some View {
@@ -91,11 +101,13 @@ struct MapFloatingChrome: View {
                     ProgressView()
                 } else {
                     Image(systemName: "location.fill")
-                        .font(.body.weight(.semibold))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(viewModel.isLocationAuthorized ? Color.accentColor : Color.primary)
                 }
             }
-            .frame(width: 44, height: 44)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(width: 48, height: 48)
+            .background(.ultraThinMaterial, in: Circle())
+            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
         .disabled(!viewModel.isDataReady || viewModel.isLocating)

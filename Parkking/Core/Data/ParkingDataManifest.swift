@@ -1,7 +1,7 @@
 import Foundation
 
 /// Provenance metadata for the bundled Toronto curb GeoJSON snapshot.
-struct ParkingDataManifest: Sendable, Codable, Equatable {
+nonisolated struct ParkingDataManifest: Sendable, Codable, Equatable {
     var scheduleSchemaVersion: Int
     var featureCount: Int
     var byteSize: Int

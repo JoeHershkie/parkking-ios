@@ -1,6 +1,6 @@
 import Foundation
 
-struct CurbCandidate: Sendable, Equatable {
+nonisolated struct CurbCandidate: Sendable, Equatable {
     var feature: ParkingFeature
     var featureKey: String
     var distanceMeters: Double
@@ -28,7 +28,7 @@ struct CurbCandidate: Sendable, Equatable {
     }
 }
 
-struct CurbSideGroup: Sendable, Equatable, Identifiable {
+nonisolated struct CurbSideGroup: Sendable, Equatable, Identifiable {
     var id: String { groupKey }
     var groupKey: String
     var street: String
@@ -65,7 +65,7 @@ struct CurbSideGroup: Sendable, Equatable, Identifiable {
 
     /// Rules for the highlighted segment only. Adjacent clustered segments stay out of the card.
     /// Same-geometry stacked signs still compose together.
-    var verdictFeatures: [ParkingFeature] {
+    nonisolated var verdictFeatures: [ParkingFeature] {
         let ids = Set(highlightFeatureIDs)
         guard let primary = features.first(where: { ids.contains($0.id) }) ?? features.first else {
             return []
@@ -74,7 +74,7 @@ struct CurbSideGroup: Sendable, Equatable, Identifiable {
     }
 }
 
-struct SelectionResult: Sendable, Equatable {
+nonisolated struct SelectionResult: Sendable, Equatable {
     var groups: [CurbSideGroup]
     var selectedGroupKey: String?
     var selected: CurbSideGroup?
@@ -90,9 +90,9 @@ struct SelectionResult: Sendable, Equatable {
     }
 }
 
-enum CurbSelection {
-    /// Opposite curbs are typically ~8–15 m apart; keep taps on the nearer line.
-    nonisolated static let tapMaxDistanceMeters: Double = 30
+nonisolated enum CurbSelection {
+    /// Buffer radius for curb tap selection (10 m).
+    nonisolated static let tapMaxDistanceMeters: Double = 10
     /// Along-street grouping of the same curb side around the tap.
     nonisolated static let localClusterMeters: Double = 120
 
@@ -216,7 +216,6 @@ enum CurbSelection {
             return SelectionResult(groups: [], selectedGroupKey: nil, selected: nil)
         }
 
-        let nearestKey = groups[0].groupKey
         let preferredHit = preferredGroupKey.flatMap { key in
             groups.first(where: { $0.groupKey == key })
         }

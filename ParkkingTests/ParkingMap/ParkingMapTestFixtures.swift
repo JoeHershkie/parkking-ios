@@ -37,7 +37,7 @@ final class MockLocationClient: LocationProviding {
 }
 
 enum ParkingMapTestFixtures {
-    static let queenNorth = CLLocationCoordinate2D(latitude: 43.6502, longitude: -79.4005)
+    static let queenNorth = CLLocationCoordinate2D(latitude: 43.65005, longitude: -79.4005)
     static let queenSouth = CLLocationCoordinate2D(latitude: 43.64985, longitude: -79.4005)
     static let toronto = ParkingMapConstants.torontoCenter
     static let vancouver = CLLocationCoordinate2D(latitude: 49.2827, longitude: -123.1207)

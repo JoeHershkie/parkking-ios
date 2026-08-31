@@ -20,6 +20,7 @@ struct ParkingMapViewModelTests {
         )
         #expect(accepted)
         #expect(vm.lastSelectionSource == .search)
+        #expect(vm.isResultPresented == false)
         #expect(vm.lastFlownRegion != nil)
         #expect(
             ParkingMapConstants.visibleWidthMeters(vm.lastFlownRegion!)
@@ -34,6 +35,7 @@ struct ParkingMapViewModelTests {
             source: .recent
         )
         #expect(vm.lastSelectionSource == .recent)
+        #expect(vm.isResultPresented == false)
         #expect(recents.recents.count == 1)
 
         vm.selectAtPoint(
@@ -42,6 +44,7 @@ struct ParkingMapViewModelTests {
             source: .gps
         )
         #expect(vm.lastSelectionSource == .gps)
+        #expect(vm.isResultPresented == false)
         #expect(recents.recents.contains { $0.label == "Current location" } == false)
     }
 
@@ -58,9 +61,10 @@ struct ParkingMapViewModelTests {
         #expect(recents.recents.isEmpty)
         #expect(vm.lastFlownRegion == nil)
         #expect(vm.selection == nil)
+        #expect(vm.isResultPresented == false)
     }
 
-    @Test("manual tap selects without flying or writing recents")
+    @Test("manual tap selects without flying or writing recents, and presents result card")
     func manualTapDoesNotFlyOrRecord() async {
         let recents = ParkingMapTestFixtures.recentsStore()
         let vm = ParkingMapTestFixtures.viewModel(recents: recents)
@@ -68,10 +72,17 @@ struct ParkingMapViewModelTests {
         await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
         vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
         #expect(vm.lastSelectionSource == .tap)
+        #expect(vm.isResultPresented == true)
         #expect(vm.lastFlownRegion == nil)
         #expect(vm.selection?.selected != nil)
         #expect(recents.recents.isEmpty)
         #expect(vm.sheetPrompt == .verdict)
+
+        vm.dismissResult()
+        #expect(vm.isResultPresented == false)
+        #expect(vm.selection == nil)
+        #expect(vm.verdict == nil)
+        #expect(vm.selectedFeatureIDs.isEmpty)
     }
 
     @Test("zoom threshold changes coaching and never auto-selects")

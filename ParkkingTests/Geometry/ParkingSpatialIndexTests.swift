@@ -104,7 +104,7 @@ struct ParkingSpatialIndexTests {
 
         let collection = ParkingFeatureCollection(features: features)
         let index = ParkingSpatialIndex(collection: collection)
-        let point = LngLat(lng: -79.4005, lat: 43.65005)
+        let point = LngLat(lng: -79.3998, lat: 43.65005)
         let radius = CurbSelection.tapMaxDistanceMeters
 
         let padDeg = CurbGeometry.degreesPad(forMeters: radius, atLatitude: point.lat)
@@ -126,6 +126,7 @@ struct ParkingSpatialIndexTests {
             maxDistanceMeters: radius
         )
 
+        #expect(indexedCandidates.count > 0)
         #expect(indexedCandidates.count == bruteCandidates.count)
         #expect(
             indexedCandidates.map(\.featureKey) == bruteCandidates.map(\.featureKey)

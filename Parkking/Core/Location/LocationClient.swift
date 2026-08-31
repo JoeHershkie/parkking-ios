@@ -64,10 +64,16 @@ final class LocationClient: NSObject, LocationProviding, CLLocationManagerDelega
         let manager = CLLocationManager()
         self.manager = manager
         self.authorizationStatus = manager.authorizationStatus
-        self.servicesEnabled = CLLocationManager.locationServicesEnabled()
+        self.servicesEnabled = true
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
+        Task.detached {
+            let enabled = CLLocationManager.locationServicesEnabled()
+            await MainActor.run { [weak self] in
+                self?.servicesEnabled = enabled
+            }
+        }
     }
 
     func requestWhenInUsePermission() {
@@ -75,7 +81,9 @@ final class LocationClient: NSObject, LocationProviding, CLLocationManagerDelega
     }
 
     func requestOneShotLocation() async throws -> CLLocation {
-        refreshAuthorizationStatus()
+        authorizationStatus = manager.authorizationStatus
+        let enabled = await Task.detached { CLLocationManager.locationServicesEnabled() }.value
+        servicesEnabled = enabled
         if !servicesEnabled {
             throw LocationClientError.servicesDisabled
         }
@@ -106,15 +114,25 @@ final class LocationClient: NSObject, LocationProviding, CLLocationManagerDelega
     }
 
     func refreshAuthorizationStatus() {
-        servicesEnabled = CLLocationManager.locationServicesEnabled()
         authorizationStatus = manager.authorizationStatus
+        Task.detached {
+            let enabled = CLLocationManager.locationServicesEnabled()
+            await MainActor.run { [weak self] in
+                self?.servicesEnabled = enabled
+            }
+        }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        Task { @MainActor in
-            self.authorizationStatus = manager.authorizationStatus
-            self.servicesEnabled = CLLocationManager.locationServicesEnabled()
-            self.delegate?.locationClientDidChangeAuthorization(self)
+        let status = manager.authorizationStatus
+        Task.detached {
+            let enabled = CLLocationManager.locationServicesEnabled()
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.authorizationStatus = status
+                self.servicesEnabled = enabled
+                self.delegate?.locationClientDidChangeAuthorization(self)
+            }
         }
     }
 

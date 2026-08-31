@@ -34,6 +34,7 @@ struct ParkingOverlayStylingTests {
         #expect(plan.colorBuckets[.allowedUncertain] == [uncertainAllowed.id])
         #expect(plan.colorBuckets[.restrictedUncertain] == nil)
         #expect(plan.selectedIDs == [selectedRestricted.id, selectedPart.id])
+        #expect(plan.selectedBuckets[.restricted] == [selectedRestricted.id, selectedPart.id])
         #expect(plan.colorBuckets.values.flatMap { $0 }.contains(selectedRestricted.id))
         #expect(plan.colorBuckets.values.flatMap { $0 }.contains(selectedPart.id))
     }
@@ -64,6 +65,30 @@ struct ParkingOverlayStylingTests {
             ParkingOverlayStyling.colorKind(severity: 2, polarity: .notPermitted, uncertain: true)
                 == .restrictedUncertain
         )
+    }
+
+    @Test("green and red base segments share the same line width")
+    func greenAndRedBaseLineWidth() {
+        #expect(ParkingOverlayBucketKind.allowed.lineWidth == ParkingOverlayBucketKind.restricted.lineWidth)
+        #expect(ParkingOverlayBucketKind.allowed.lineWidth == 5)
+        #expect(ParkingOverlayBucketKind.restricted.lineWidth == 5)
+    }
+
+    @Test("selected segment overlay styling preserves color and adds outer border")
+    func selectedSegmentStyling() {
+        let sampleItem = item(id: "1", polarity: .permitted, severity: 0)
+        let baseOverlay = ParkingStyledOverlay(kind: .allowed, role: .base, items: [sampleItem])
+        let selectedBorderOverlay = ParkingStyledOverlay(kind: .allowed, role: .selectedBorder, items: [sampleItem])
+        let selectedFillOverlay = ParkingStyledOverlay(kind: .allowed, role: .selectedFill, items: [sampleItem])
+
+        #expect(baseOverlay.lineWidth == 5)
+        #expect(selectedFillOverlay.lineWidth == 8)
+        #expect(selectedBorderOverlay.lineWidth == 11)
+
+        // Fill retains the bucket kind color (green for allowed)
+        #expect(selectedFillOverlay.strokeColor == ParkingOverlayBucketKind.allowed.strokeColor)
+        // Border uses black
+        #expect(selectedBorderOverlay.strokeColor == ParkingOverlayStyling.selectedBorderColor)
     }
 
     private func item(
