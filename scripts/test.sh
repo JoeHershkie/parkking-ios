@@ -61,12 +61,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Ensure simulator is booted in background if shutdown to reduce cold-start latency
-BOOT_STATUS=$(xcrun simctl list devices available | grep -F "${DEVICE_NAME}" | head -n 1 || true)
-if [[ "${BOOT_STATUS}" =~ "Shutdown" ]]; then
-  echo "⚡ Booting ${DEVICE_NAME} simulator in background..."
-  xcrun simctl boot "${DEVICE_NAME}" >/dev/null 2>&1 || true
-fi
+# Ensure simulator is booted and ready before running tests
+ensure_sim_booted() {
+  local booted
+  booted=$(xcrun simctl list devices available | grep -E "^[[:space:]]*${DEVICE_NAME} \(" | grep -F "(Booted)" || true)
+  if [[ -z "${booted}" ]]; then
+    echo "⚡ Booting ${DEVICE_NAME} simulator..."
+    xcrun simctl boot "${DEVICE_NAME}" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "${DEVICE_NAME}" -b >/dev/null 2>&1 || true
+  fi
+}
 
 FORMATTER=""
 if command -v xcbeautify >/dev/null 2>&1; then
@@ -92,6 +96,7 @@ case "$MODE" in
     ;;
 
   only)
+    ensure_sim_booted
     # Prefix with ParkkingTests if not provided
     FULL_TARGET="$TARGET_TEST"
     if [[ "$FULL_TARGET" != ParkkingTests* ]]; then
@@ -102,24 +107,30 @@ case "$MODE" in
       -scheme "${SCHEME}" \
       -destination "${DESTINATION}" \
       -derivedDataPath "${DERIVED_DATA_PATH}" \
+      -parallel-testing-enabled NO \
       -only-testing:"${FULL_TARGET}"
     ;;
 
   fast)
+    ensure_sim_booted
     echo "🚀 Running fast test suite (skipping PerformanceGateTests & ParkingDataContractTests)..."
     run_xcodebuild test \
       -scheme "${SCHEME}" \
       -destination "${DESTINATION}" \
       -derivedDataPath "${DERIVED_DATA_PATH}" \
+      -parallel-testing-enabled NO \
       -skip-testing:ParkkingTests/PerformanceGateTests \
       -skip-testing:ParkkingTests/ParkingDataContractTests
     ;;
 
   all)
+    ensure_sim_booted
     echo "🧪 Running full test suite..."
     run_xcodebuild test \
       -scheme "${SCHEME}" \
       -destination "${DESTINATION}" \
-      -derivedDataPath "${DERIVED_DATA_PATH}"
+      -derivedDataPath "${DERIVED_DATA_PATH}" \
+      -parallel-testing-enabled NO
     ;;
 esac
+

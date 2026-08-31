@@ -13,7 +13,7 @@
   },
   "testTargets" : [
     {
-      "parallelizable" : true,
+      "parallelizable" : false,
       "target" : {
         "containerPath" : "container:Parkking.xcodeproj",
         "identifier" : "AAF25016723255E78E51E9D6",

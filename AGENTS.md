@@ -44,9 +44,15 @@ To ensure fast iteration times during agentic loops, always follow these testing
 
 ---
 
+## Test Harness Architecture & Speed Optimizations
+- **Test Host Short-Circuit:** In `ParkkingApp.swift`, `isTesting` detects test runner execution and renders `Color.clear`, preventing eager initialization of `ParkingMapScreen`, `ParkingMapViewModel`, and `CLLocationManager` synchronous XPC locks.
+- **Single Simulator Execution:** All test plans and `./scripts/test.sh` run with `-parallel-testing-enabled NO` / `parallelizable: false` so tests run directly on the booted `iPhone 17` without spinning up ephemeral cloned simulators in `~/Library/Developer/XCTestDevices/`.
+- **Boot Synchronization:** `./scripts/test.sh` checks simulator readiness using `xcrun simctl bootstatus "iPhone 17" -b` before invoking `xcodebuild`.
+
 ## Test Target Directory Reference
 - Schedule logic: `ParkkingTests/Schedule/` (`ScheduleCorpusTests`, `CurbVerdictTests`, `ParkingTimeQueryTests`, `OntarioPublicHolidaysTests`)
 - Geometry & Spatial indexing: `ParkkingTests/Geometry/` (`CurbSelectionTests`, `ParkingSpatialIndexTests`, `SideNormalizationTests`)
 - Map & UI ViewModels: `ParkkingTests/ParkingMap/` (`ParkingMapViewModelTests`, `ParkingOverlayStylingTests`)
 - Location client flows: `ParkkingTests/Location/` (`LocationClientFlowTests`, `MapKitSearchClientTests`, `RecentsStoreTests`)
 - Verdict display: `ParkkingTests/Verdict/` (`BylawCopyControllerTests`, `NearbyCurbSidesTests`)
+

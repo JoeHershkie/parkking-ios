@@ -3,6 +3,8 @@
 Refer to [AGENTS.md](file:///Users/joey/Developer/projects/parkking/parkking-ios/AGENTS.md) for full guidelines.
 
 ## Quick Testing Rules for Agents
-- **Iterative Testing:** Use `./scripts/test.sh --only <SuiteName>` or `make test-only SUITE=<SuiteName>` to test only relevant code.
+- **Iterative Testing:** Use `./scripts/test.sh --only <SuiteName>` or `make test-only SUITE=<SuiteName>` to test only relevant code (runs in ~1-3s).
 - **Verification:** Run `./scripts/test.sh --fast` or `make test-fast` (skips slow 30MB dataset gates).
 - **Full Suite:** Only run `./scripts/test.sh --all` when explicitly requested.
+- **Test Architecture:** Test host startup short-circuits UI/LocationClient initialization, and parallel testing is disabled to avoid slow simulator cloning.
+
