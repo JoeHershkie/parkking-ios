@@ -1,0 +1,13 @@
+---
+description: Fast testing and build guidelines for Parkking iOS
+globs: ["**/*.swift"]
+alwaysApply: true
+---
+
+# Fast Testing Directives
+
+When writing features, refactoring, or debugging:
+- **Do not run full test suites during iteration.**
+- Use `./scripts/test.sh --only <SuiteName>` or `make test-only SUITE=<SuiteName>` to run only the relevant test class (takes 1-2s).
+- Use `./scripts/test.sh --fast` or `make test-fast` for pre-completion checks (skips 30MB GeoJSON load and hash validation).
+- Avoid running `PerformanceGateTests` unless explicitly benchmarking dataset loading.

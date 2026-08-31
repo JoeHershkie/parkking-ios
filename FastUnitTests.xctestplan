@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "FA570001-0000-4000-8000-000000000001",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "skippedTests" : [
+        "PerformanceGateTests",
+        "ParkingDataContractTests"
+      ],
+      "target" : {
+        "containerPath" : "container:Parkking.xcodeproj",
+        "identifier" : "AAF25016723255E78E51E9D6",
+        "name" : "ParkkingTests"
+      }
+    }
+  ],
+  "version" : 1
+}

@@ -38,4 +38,5 @@ profile
 
 # Editor / build-server local
 buildServer.json
-.cursor/
+.cursor/*
+!.cursor/rules/
