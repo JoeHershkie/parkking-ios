@@ -78,7 +78,7 @@ struct TimeMenuButton: View {
             TimeSheet(query: viewModel.appliedTimeQuery) { next in
                 viewModel.applyTimeQuery(next)
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.fraction(0.35), .medium])
             .presentationDragIndicator(.visible)
         }
     }

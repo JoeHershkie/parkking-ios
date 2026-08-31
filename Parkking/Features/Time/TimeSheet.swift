@@ -9,65 +9,68 @@ struct TimeSheet: View {
     init(query: TimeQuery, onApply: @escaping (TimeQuery) -> Void) {
         self.query = query
         self.onApply = onApply
-        _draft = State(initialValue: query)
+        var initial = query
+        if initial.mode == .now {
+            let slot = ParkingTimeQuery.slotFromDate(Date(), timeZone: ParkingTimeQuery.torontoTimeZone)
+            initial.date = ParkingTimeQuery.slotToDateString(slot)
+            initial.startMinute = slot.minuteOfDay
+            initial.mode = .custom
+        }
+        _draft = State(initialValue: initial)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Picker("Time mode", selection: $draft.mode) {
-                        Text("Now").tag(TimeMode.now)
-                        Text("Custom").tag(TimeMode.custom)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(minHeight: 44)
-                    .accessibilityLabel("Time mode")
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 8) {
+                        Text("From")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.secondary)
 
-                    if draft.mode == .custom {
+                        DatePicker(
+                            "Start time",
+                            selection: startTimeBinding,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
+
+                        Text("to")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        DatePicker(
+                            "End time",
+                            selection: endTimeBinding,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
+
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: 44)
+
+                    HStack(spacing: 12) {
                         DatePicker(
                             "Date",
                             selection: customDateBinding,
                             displayedComponents: .date
                         )
+                        .labelsHidden()
                         .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
-                        .frame(minHeight: 44)
 
-                        DatePicker(
-                            "Start",
-                            selection: customDateBinding,
-                            displayedComponents: .hourAndMinute
-                        )
-                        .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
-                        .frame(minHeight: 44)
-                    }
+                        Spacer(minLength: 0)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Duration")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            ForEach(ParkingTimeQuery.durationPresets, id: \.self) { minutes in
-                                durationChip(minutes)
-                            }
+                        Button("Apply") {
+                            applyCustomQuery()
                         }
-
-                        if showsCustomDurationControl {
-                            Stepper(value: customMinutesBinding, in: 1...720) {
-                                Text("\(draft.requestedDurationMinutes) minutes")
-                                    .font(.body.weight(.semibold))
-                            }
-                            .frame(minHeight: 44)
-                            .accessibilityLabel("Custom duration")
-                            .accessibilityValue("\(draft.requestedDurationMinutes) minutes")
-                        } else {
-                            Button("Custom duration…") {
-                                draft.durationPreset = .custom
-                            }
-                            .frame(minHeight: 44)
-                        }
+                        .buttonStyle(.borderedProminent)
+                        .fontWeight(.semibold)
+                        .accessibilityLabel("Apply custom time")
                     }
+                    .frame(minHeight: 44)
 
                     if ParkingTimeQuery.draftCrossesMidnight(draft) {
                         Text(ParkingTimeQuery.midnightWarning)
@@ -76,41 +79,38 @@ struct TimeSheet: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     }
-
-                    Button("Apply") {
-                        var next = draft
-                        next.requestedDurationMinutes = ParkingTimeQuery.clampDuration(
-                            next.requestedDurationMinutes
-                        )
-                        if next.durationPreset != .custom {
-                            next.durationPreset = ParkingTimeQuery.preset(
-                                for: next.requestedDurationMinutes
-                            )
-                        }
-                        onApply(next)
-                        dismiss()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .accessibilityLabel("Apply time query")
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
             }
-            .navigationTitle("Check time & duration")
+            .navigationTitle("Custom time / duration")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .frame(minHeight: 44)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30, height: 30)
+                            .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close")
                 }
             }
-            .onAppear { draft = query }
+            .onAppear {
+                var initial = query
+                if initial.mode == .now {
+                    let slot = ParkingTimeQuery.slotFromDate(Date(), timeZone: ParkingTimeQuery.torontoTimeZone)
+                    initial.date = ParkingTimeQuery.slotToDateString(slot)
+                    initial.startMinute = slot.minuteOfDay
+                    initial.mode = .custom
+                }
+                draft = initial
+            }
         }
-    }
-
-    private var showsCustomDurationControl: Bool {
-        draft.durationPreset == .custom
-            || !ParkingTimeQuery.durationPresets.contains(draft.requestedDurationMinutes)
     }
 
     private var customDateBinding: Binding<Date> {
@@ -123,36 +123,61 @@ struct TimeSheet: View {
             },
             set: { newDate in
                 draft.date = ParkingTimeQuery.torontoDateString(from: newDate)
+            }
+        )
+    }
+
+    private var startTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                ParkingTimeQuery.date(
+                    fromTorontoDateString: draft.date,
+                    minuteOfDay: draft.startMinute
+                )
+            },
+            set: { newDate in
                 draft.startMinute = ParkingTimeQuery.minuteOfDay(from: newDate)
             }
         )
     }
 
-    private var customMinutesBinding: Binding<Int> {
+    private var endTimeBinding: Binding<Date> {
         Binding(
-            get: { draft.requestedDurationMinutes },
-            set: { value in
-                draft.requestedDurationMinutes = ParkingTimeQuery.clampDuration(value)
-                draft.durationPreset = .custom
+            get: {
+                let endMinute = draft.startMinute + draft.requestedDurationMinutes
+                return ParkingTimeQuery.date(
+                    fromTorontoDateString: draft.date,
+                    minuteOfDay: endMinute
+                )
+            },
+            set: { newDate in
+                let pickedMinute = ParkingTimeQuery.minuteOfDay(from: newDate)
+                if pickedMinute > draft.startMinute {
+                    let duration = pickedMinute - draft.startMinute
+                    draft.requestedDurationMinutes = ParkingTimeQuery.clampDuration(duration)
+                } else {
+                    let overnightDuration = (1440 - draft.startMinute) + pickedMinute
+                    if overnightDuration <= ParkingTimeQuery.maxDurationMinutes {
+                        draft.requestedDurationMinutes = ParkingTimeQuery.clampDuration(overnightDuration)
+                    } else {
+                        draft.requestedDurationMinutes = ParkingTimeQuery.minDurationMinutes
+                    }
+                }
+                draft.durationPreset = ParkingTimeQuery.preset(for: draft.requestedDurationMinutes)
             }
         )
     }
 
-    private func durationChip(_ minutes: Int) -> some View {
-        let selected = draft.durationPreset == .minutes(minutes)
-            && draft.requestedDurationMinutes == minutes
-        return Button {
-            draft.durationPreset = .minutes(minutes)
-            draft.requestedDurationMinutes = minutes
-        } label: {
-            Text(ParkingTimeQuery.formatDurationLabel(minutes))
-                .font(.subheadline.weight(.bold))
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .tint(selected ? .accentColor : .secondary)
-        .accessibilityLabel(ParkingTimeQuery.formatDurationLabel(minutes))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityValue(selected ? "Selected" : "Not selected")
+    private func applyCustomQuery() {
+        var next = draft
+        next.mode = .custom
+        next.requestedDurationMinutes = ParkingTimeQuery.clampDuration(
+            next.requestedDurationMinutes
+        )
+        next.durationPreset = ParkingTimeQuery.preset(
+            for: next.requestedDurationMinutes
+        )
+        onApply(next)
+        dismiss()
     }
 }
