@@ -110,7 +110,10 @@ struct CurbVerdictTests {
             effectiveEndMinute: 1020,
             requestedDurationMinutes: 120
         )
-        #expect(v.status == .notAllowed)
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 3:00pm to 4:00pm")
+        #expect(v.allowedStartMinute == 900)
+        #expect(v.allowedEndMinute == 960)
         #expect(v.maxStayWarning?.localizedCaseInsensitiveContains("1 hour") == true)
     }
 
@@ -280,5 +283,94 @@ struct CurbVerdictTests {
         #expect(v.headline == "Partially allowed, from 5:00pm to 6:00pm")
         #expect(v.allowedStartMinute == 17 * 60)
         #expect(v.allowedEndMinute == 18 * 60)
+    }
+
+    @Test func permittedWindowOverridesGeneralNoParking() {
+        let anytimeNoParking = Schedule(status: .anytime, source: "Anytime")
+        let v = verdict(
+            features: [
+                feature("no_parking", anytimeNoParking),
+                feature("restricted_periods", monFri86) {
+                    $0.max = "1 hour"
+                    $0.maxMinutes = 60
+                },
+            ],
+            slot: tue3pm,
+            effectiveEndMinute: 16 * 60,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == .parkingAllowed)
+        #expect(v.headline == "Parking allowed")
+    }
+
+    @Test func noStandingOverridesPermittedWindow() {
+        let anytimeNoStanding = Schedule(status: .anytime, source: "Anytime")
+        let anytimePermit = Schedule(status: .anytime, source: "Anytime")
+        let v = verdict(
+            features: [
+                feature("restricted_periods", anytimePermit) {
+                    $0.max = "2 hours"
+                    $0.maxMinutes = 120
+                },
+                feature("no_standing", anytimeNoStanding),
+            ],
+            slot: tue3pm,
+            effectiveEndMinute: 16 * 60,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == .notAllowed)
+        #expect(v.primaryReason == "No standing")
+    }
+
+    @Test func noStoppingOverridesPermittedWindow() {
+        let anytimeNoStopping = Schedule(status: .anytime, source: "Anytime")
+        let v = verdict(
+            features: [
+                feature("restricted_periods", monFri86) {
+                    $0.max = "1 hour"
+                    $0.maxMinutes = 60
+                },
+                feature("no_stopping", anytimeNoStopping),
+            ],
+            slot: tue3pm,
+            effectiveEndMinute: 16 * 60,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == .notAllowed)
+        #expect(v.primaryReason == "No stopping")
+    }
+
+    @Test func anytimePermitWithLongStayPartiallyAllowed() {
+        let anytimePermit = Schedule(status: .anytime, source: "Anytime")
+        let slot = Slot(
+            dayOfWeek: 1,
+            minuteOfDay: 19 * 60 + 39, // 7:39pm = 1179
+            month: 8,
+            dayOfMonth: 31,
+            year: 2026
+        )
+        let feat = feature("restricted_periods", anytimePermit) {
+            $0.max = "1 hour"
+            $0.maxMinutes = 60
+        }
+        let v = verdict(
+            features: [feat],
+            slot: slot,
+            effectiveEndMinute: 22 * 60 + 39, // 10:39pm = 1359
+            requestedDurationMinutes: 180
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 7:39pm to 8:39pm")
+        #expect(v.allowedStartMinute == 19 * 60 + 39)
+        #expect(v.allowedEndMinute == 20 * 60 + 39)
+        #expect(v.maxStayWarning?.localizedCaseInsensitiveContains("1 hour") == true)
+
+        let evaluation = ScheduleEvaluator.evaluateInRange(
+            props: feat.properties,
+            slot: slot,
+            endMinuteOfDay: 22 * 60 + 39,
+            includeUnknown: true
+        )
+        #expect(evaluation.polarity == .partial)
     }
 }

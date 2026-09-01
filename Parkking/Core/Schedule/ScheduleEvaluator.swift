@@ -27,14 +27,27 @@ enum ScheduleEvaluator {
         category: String,
         overlaps: Bool,
         fullyCovered: Bool,
-        schedule: Schedule
+        schedule: Schedule,
+        maxMinutes: Int? = nil,
+        requestedDurationMinutes: Int? = nil
     ) -> FilterPolarity {
+        let maxStayViolated: Bool
+        if let maxMinutes, maxMinutes > 0, let requestedDurationMinutes, requestedDurationMinutes > maxMinutes {
+            maxStayViolated = true
+        } else {
+            maxStayViolated = false
+        }
+
         if schedule.status == .anytime {
-            if category == "restricted_periods" { return .permitted }
+            if category == "restricted_periods" {
+                return maxStayViolated ? .partial : .permitted
+            }
             return .restricted
         }
         if category == "restricted_periods" {
-            if fullyCovered { return .permitted }
+            if fullyCovered {
+                return maxStayViolated ? .partial : .permitted
+            }
             if overlaps { return .partial }
             return .notPermitted
         }
@@ -123,6 +136,8 @@ enum ScheduleEvaluator {
             )
         }
 
+        let requestedDurationMinutes = endMinuteOfDay - slot.minuteOfDay
+
         if schedule.status == .partial {
             let overlaps = ScheduleMembership.overlapsMembershipInRange(
                 schedule,
@@ -140,7 +155,9 @@ enum ScheduleEvaluator {
                     category: category,
                     overlaps: overlaps,
                     fullyCovered: fullyCovered,
-                    schedule: schedule
+                    schedule: schedule,
+                    maxMinutes: props.maxMinutes,
+                    requestedDurationMinutes: requestedDurationMinutes
                 ),
                 unparsed: true,
                 partial: true
@@ -164,7 +181,9 @@ enum ScheduleEvaluator {
                 category: category,
                 overlaps: overlaps,
                 fullyCovered: fullyCovered,
-                schedule: schedule
+                schedule: schedule,
+                maxMinutes: props.maxMinutes,
+                requestedDurationMinutes: requestedDurationMinutes
             ),
             unparsed: false
         )

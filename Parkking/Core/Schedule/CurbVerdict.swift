@@ -239,7 +239,35 @@ enum CurbVerdictComposer {
             )
         }
 
-        if polarity == .restricted || polarity == .partial {
+        if polarity == .restricted {
+            let kind = categoryKind(props.scheduleCategory) ?? .noParking
+            let ruleKind: ContributingRuleKind
+            switch kind {
+            case .noStopping: ruleKind = .noStopping
+            case .noStanding: ruleKind = .noStanding
+            case .noParking: ruleKind = .noParking
+            case .permittedWindow: ruleKind = .permittedWindow
+            case .maxStay: ruleKind = .maxStay
+            case .uncertain: ruleKind = .uncertain
+            }
+            return ContributingRule(
+                feature: feature,
+                evaluation: evaluation,
+                kind: ruleKind,
+                reason: reasonForRestriction(kind: kind, props: props, polarity: polarity)
+            )
+        }
+
+        if maxStayViolated(props: props, requestedDurationMinutes: requestedDurationMinutes) {
+            return ContributingRule(
+                feature: feature,
+                evaluation: evaluation,
+                kind: .maxStay,
+                reason: reasonForRestriction(kind: .maxStay, props: props, polarity: polarity)
+            )
+        }
+
+        if polarity == .partial {
             let kind = categoryKind(props.scheduleCategory) ?? .noParking
             let ruleKind: ContributingRuleKind
             switch kind {
@@ -268,17 +296,6 @@ enum CurbVerdictComposer {
                     props: props,
                     polarity: polarity
                 )
-            )
-        }
-
-        if (polarity == .permitted || polarity == .inactive)
-            && maxStayViolated(props: props, requestedDurationMinutes: requestedDurationMinutes)
-        {
-            return ContributingRule(
-                feature: feature,
-                evaluation: evaluation,
-                kind: .maxStay,
-                reason: reasonForRestriction(kind: .maxStay, props: props, polarity: polarity)
             )
         }
 
@@ -383,10 +400,10 @@ enum CurbVerdictComposer {
         let normalizedRules: [ContributingRule]
         if hasActivePermit {
             normalizedRules = contributingRules.map { rule in
-                if rule.kind == .permittedWindow {
+                if rule.kind == .permittedWindow || rule.kind == .noParking {
                     var updated = rule
                     updated.kind = .inactive
-                    updated.reason = "Another posted rule covers this interval."
+                    updated.reason = "Permitted parking rule covers this interval."
                     return updated
                 }
                 return rule
@@ -423,6 +440,7 @@ enum CurbVerdictComposer {
             let startMinute = options.slot.minuteOfDay
 
             let minuteIsAllowed: (Int) -> Bool = { m in
+                let elapsedMinutes = m - startMinute
                 let slotM = Slot(
                     dayOfWeek: options.slot.dayOfWeek,
                     minuteOfDay: m,
@@ -439,15 +457,16 @@ enum CurbVerdictComposer {
                     return classifyRule(
                         feature: feature,
                         evaluation: eval,
-                        requestedDurationMinutes: 0
+                        requestedDurationMinutes: elapsedMinutes + 1
                     )
                 }
                 let permitM = rulesM.contains { $0.kind == .allowed }
                 let normalizedM = permitM
                     ? rulesM.map { rule in
-                        if rule.kind == .permittedWindow {
+                        if rule.kind == .permittedWindow || rule.kind == .noParking {
                             var updated = rule
                             updated.kind = .inactive
+                            updated.reason = "Permitted parking rule covers this interval."
                             return updated
                         }
                         return rule
@@ -459,6 +478,7 @@ enum CurbVerdictComposer {
             }
 
             let minuteIsRestricted: (Int) -> Bool = { m in
+                let elapsedMinutes = m - startMinute
                 let slotM = Slot(
                     dayOfWeek: options.slot.dayOfWeek,
                     minuteOfDay: m,
@@ -475,15 +495,16 @@ enum CurbVerdictComposer {
                     return classifyRule(
                         feature: feature,
                         evaluation: eval,
-                        requestedDurationMinutes: 0
+                        requestedDurationMinutes: elapsedMinutes + 1
                     )
                 }
                 let permitM = rulesM.contains { $0.kind == .allowed }
                 let normalizedM = permitM
                     ? rulesM.map { rule in
-                        if rule.kind == .permittedWindow {
+                        if rule.kind == .permittedWindow || rule.kind == .noParking {
                             var updated = rule
                             updated.kind = .inactive
+                            updated.reason = "Permitted parking rule covers this interval."
                             return updated
                         }
                         return rule
