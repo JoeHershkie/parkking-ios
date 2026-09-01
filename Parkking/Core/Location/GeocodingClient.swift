@@ -20,14 +20,14 @@ final class MapKitGeocodingClient: GeocodingProviding {
     }
 
     nonisolated static func formatMapItem(_ mapItem: MKMapItem) -> String? {
-        if let shortAddress = mapItem.address?.shortAddress, !shortAddress.isEmpty {
-            return shortAddress
+        if let shortAddress = mapItem.address?.shortAddress, let cleaned = AddressFormatter.cleanAddress(shortAddress) {
+            return cleaned
         }
-        if let name = mapItem.name, !name.isEmpty {
-            return name
+        if let name = mapItem.name, let cleaned = AddressFormatter.cleanAddress(name) {
+            return cleaned
         }
-        if let fullAddress = mapItem.address?.fullAddress, !fullAddress.isEmpty {
-            return fullAddress
+        if let fullAddress = mapItem.address?.fullAddress, let cleaned = AddressFormatter.cleanAddress(fullAddress) {
+            return cleaned
         }
         return nil
     }

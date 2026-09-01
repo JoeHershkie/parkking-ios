@@ -145,6 +145,26 @@ struct ParkingMapViewModelTests {
         #expect(vm.cardAddress == "100 Queen St W")
     }
 
+    @Test("reverse geocode rejects cross-street addresses and keeps segment street")
+    func sameStreetAddressValidation() async {
+        let geocoding = MockGeocodingClient(defaultResult: "551 Fairlawn Ave, North York")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Tap on Queen North (street = "Queen Street West")
+        vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.tapDot != nil)
+
+        // Wait for async reverse geocoding task
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        // Should NOT show "551 Fairlawn Ave" because Fairlawn Ave doesn't match Queen St W
+        #expect(vm.cardAddress != "551 Fairlawn Ave")
+        #expect(vm.cardAddress == "Queen Street West" || vm.cardAddress?.contains("Queen") == true)
+    }
+
     @Test("zoom threshold changes coaching and never auto-selects")
     func zoomThresholdCoachingWithoutSelection() async {
         let vm = ParkingMapTestFixtures.viewModel()

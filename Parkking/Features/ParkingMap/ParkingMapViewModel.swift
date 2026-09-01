@@ -327,6 +327,22 @@ final class ParkingMapViewModel {
         recents = recentsStore.clear()
     }
 
+    var activeSelectionCoordinate: CLLocationCoordinate2D? {
+        if let tapDot {
+            return tapDot.coordinate
+        }
+        if let searchPin {
+            return searchPin.coordinate
+        }
+        if let group = selection?.selected,
+           let primary = group.features.first(where: { group.highlightFeatureIDs.contains($0.id) }) ?? group.features.first {
+            if let first = primary.coordinateParts.first?.first {
+                return first
+            }
+        }
+        return nil
+    }
+
     func selectAtPoint(
         coordinate: CLLocationCoordinate2D,
         label: String?,
@@ -409,8 +425,9 @@ final class ParkingMapViewModel {
                 isResultPresented = true
                 hasTappedSegmentThisSession = true
 
+                let primaryFeature = selected.features.first(where: { selected.highlightFeatureIDs.contains($0.id) }) ?? selected.features.first
                 let nearestCoord: CLLocationCoordinate2D
-                if let primaryFeature = selected.features.first(where: { selected.highlightFeatureIDs.contains($0.id) }) ?? selected.features.first,
+                if let primaryFeature,
                    let nearest = CurbGeometry.nearestPointOnFeatureMeters(point: point, feature: primaryFeature) {
                     nearestCoord = CLLocationCoordinate2D(latitude: nearest.point.lat, longitude: nearest.point.lng)
                 } else {
@@ -423,14 +440,26 @@ final class ParkingMapViewModel {
                 cardAddress = selected.street
                 locationLabel = selected.street
 
-                let lookupCoord = coordinate
+                let targetStreet = selected.street
+                let candidateCoords = buildCandidateCoordinates(nearest: nearestCoord, primaryFeature: primaryFeature)
+
                 reverseGeocodeTask = Task { [weak self] in
                     guard let self else { return }
-                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
-                        await MainActor.run {
-                            self.cardAddress = address
-                            self.locationLabel = address
+                    for candidate in candidateCoords {
+                        if Task.isCancelled { return }
+                        if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: candidate),
+                           let cleaned = AddressFormatter.cleanAddress(rawAddress),
+                           AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
+                            await MainActor.run {
+                                self.cardAddress = cleaned
+                                self.locationLabel = cleaned
+                            }
+                            return
                         }
+                    }
+                    await MainActor.run {
+                        self.cardAddress = targetStreet
+                        self.locationLabel = targetStreet
                     }
                 }
             } else {
@@ -443,7 +472,8 @@ final class ParkingMapViewModel {
             hasTappedSegmentThisSession = true
             tapDot = nil
 
-            let displayTitle = label ?? subtitle ?? result.selected?.street
+            let rawTitle = label ?? subtitle ?? result.selected?.street
+            let displayTitle = AddressFormatter.cleanAddress(rawTitle) ?? rawTitle
             cardAddress = displayTitle
             locationLabel = displayTitle
                 ?? String(
@@ -459,12 +489,20 @@ final class ParkingMapViewModel {
 
             if isCoordinateOrGeneric {
                 let lookupCoord = coordinate
+                let targetStreet = result.selected?.street
                 reverseGeocodeTask = Task { [weak self] in
                     guard let self else { return }
-                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
+                    if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord),
+                       let cleaned = AddressFormatter.cleanAddress(rawAddress) {
+                        let finalAddress: String
+                        if let targetStreet, !AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
+                            finalAddress = targetStreet
+                        } else {
+                            finalAddress = cleaned
+                        }
                         await MainActor.run {
-                            self.cardAddress = address
-                            self.locationLabel = address
+                            self.cardAddress = finalAddress
+                            self.locationLabel = finalAddress
                         }
                     }
                 }
@@ -668,5 +706,20 @@ final class ParkingMapViewModel {
 extension ParkingMapViewModel: LocationClientDelegate {
     func locationClientDidChangeAuthorization(_ client: LocationProviding) {
         Task { await handleAuthorizationChange() }
+    }
+    private func buildCandidateCoordinates(
+        nearest: CLLocationCoordinate2D,
+        primaryFeature: ParkingFeature?
+    ) -> [CLLocationCoordinate2D] {
+        var candidates: [CLLocationCoordinate2D] = [nearest]
+        guard let primaryFeature, let coords = primaryFeature.coordinateParts.first, coords.count >= 2 else {
+            return candidates
+        }
+
+        let midIndex = coords.count / 2
+        candidates.append(coords[midIndex])
+        candidates.append(coords[0])
+        candidates.append(coords[coords.count - 1])
+        return candidates
     }
 }

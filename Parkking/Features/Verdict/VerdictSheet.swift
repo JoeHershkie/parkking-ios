@@ -32,15 +32,20 @@ struct VerdictSheet: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(viewModel.cardAddress ?? verdict.street ?? "Selected location")
+                Text(AddressFormatter.cleanAddress(viewModel.cardAddress ?? verdict.street) ?? verdict.street ?? "Selected location")
                     .font(.headline)
                     .lineLimit(2)
                 Text(verdict.headline)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(statusColor(verdict.status))
-                    .accessibilityLabel("Status: \(verdict.headline)")
-                if let label = viewModel.resolvedQuery?.label {
-                    TimeMenuButton(viewModel: viewModel, style: .verdictChip(label))
+                HStack(spacing: 8) {
+                    if let label = viewModel.resolvedQuery?.label {
+                        TimeMenuButton(viewModel: viewModel, style: .verdictChip(label))
+                    }
+                    DirectionsMenuButton(
+                        coordinate: viewModel.activeSelectionCoordinate,
+                        name: viewModel.cardAddress ?? verdict.street
+                    )
                 }
             }
 
