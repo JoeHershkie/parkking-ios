@@ -12,13 +12,13 @@ struct ParkingMapScreen: View {
         if viewModel.isResultPresented {
             switch resultDetent {
             case VerdictSheet.compactDetent:
-                return 192
+                return 228
             case .medium:
                 return containerHeight * 0.55 + 16
             case .large:
                 return containerHeight * 0.90 + 16
             default:
-                return 192
+                return 228
             }
         } else {
             switch searchDetent {
@@ -46,13 +46,13 @@ struct ParkingMapScreen: View {
             .sheet(isPresented: .constant(true)) {
                 SearchSheet(viewModel: viewModel, detent: $searchDetent)
                     .presentationDetents([.height(76), .medium, .large], selection: $searchDetent)
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(.hidden)
                     .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                     .interactiveDismissDisabled()
                     .sheet(isPresented: $viewModel.isResultPresented) {
                         VerdictSheet(viewModel: viewModel, detent: $resultDetent)
                             .presentationDetents([VerdictSheet.compactDetent, .medium, .large], selection: $resultDetent)
-                            .presentationDragIndicator(.visible)
+                            .presentationDragIndicator(.hidden)
                             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                             .interactiveDismissDisabled(false)
                     }

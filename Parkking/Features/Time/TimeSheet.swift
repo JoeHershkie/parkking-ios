@@ -91,9 +91,9 @@ struct TimeSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 44, height: 44)
                             .background(Color(uiColor: .tertiarySystemFill), in: Circle())
                     }
                     .buttonStyle(.plain)
