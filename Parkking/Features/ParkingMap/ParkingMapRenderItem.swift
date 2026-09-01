@@ -62,7 +62,7 @@ enum ParkingMapConstants {
     nonisolated static let minCameraDistance: CLLocationDistance = 200
     nonisolated static let maxCameraDistance: CLLocationDistance = 80_000
     nonisolated static let chromeTopMargin: CGFloat = 88
-    nonisolated static let chromeBottomMargin: CGFloat = 196
+    nonisolated static let chromeBottomMargin: CGFloat = 0
 
     /// Approximate MapLibre zoom 14.5 gate as max visible map width.
     nonisolated static let curbVisibleMaxWidthMeters: CLLocationDistance = 1_200
@@ -96,6 +96,14 @@ enum ParkingMapConstants {
         let lat = region.center.latitude * .pi / 180
         let metersPerDegreeLng = cos(lat) * 111_320
         return abs(region.span.longitudeDelta) * metersPerDegreeLng
+    }
+
+    nonisolated static func cameraFlightDuration(distanceMeters: CLLocationDistance) -> TimeInterval {
+        guard distanceMeters > 0 else { return 0.4 }
+        let minDuration = 0.4
+        let maxDuration = 2.4
+        let scaled = minDuration + 0.38 * log(1.0 + distanceMeters / 120.0)
+        return min(maxDuration, max(minDuration, scaled))
     }
 
     nonisolated static func contains(_ coordinate: CLLocationCoordinate2D) -> Bool {

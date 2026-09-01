@@ -3,13 +3,14 @@ import SwiftUI
 
 struct ParkingMapKitView: UIViewRepresentable {
     @Bindable var viewModel: ParkingMapViewModel
+    var bottomPadding: CGFloat = 88
 
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
 
     func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView(frame: .zero)
+        let map = ParkkingMapView(frame: .zero)
         map.delegate = context.coordinator
         map.isRotateEnabled = true
         map.isPitchEnabled = true
@@ -25,11 +26,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             right: 0
         )
 
-        let config = MKStandardMapConfiguration()
-        config.elevationStyle = .flat
-        config.pointOfInterestFilter = .excludingAll
-        config.showsTraffic = false
-        map.preferredConfiguration = config
+        map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
 
         map.cameraBoundary = MKMapView.CameraBoundary(
             coordinateRegion: ParkingMapConstants.parkingCoverageRegion
@@ -40,19 +37,35 @@ struct ParkingMapKitView: UIViewRepresentable {
         )
         map.setRegion(ParkingMapConstants.cityRegion, animated: false)
 
+        let scale = MKScaleView(mapView: map)
+        scale.scaleVisibility = .adaptive
+        scale.legendAlignment = .leading
+        scale.translatesAutoresizingMaskIntoConstraints = false
+        map.addSubview(scale)
+
         let compass = MKCompassButton(mapView: map)
         compass.compassVisibility = .adaptive
         compass.translatesAutoresizingMaskIntoConstraints = false
         map.addSubview(compass)
+
+        let compassBottomConstraint = compass.bottomAnchor.constraint(
+            equalTo: map.safeAreaLayoutGuide.bottomAnchor,
+            constant: -(bottomPadding + 148)
+        )
+        context.coordinator.compassBottomConstraint = compassBottomConstraint
+
         NSLayoutConstraint.activate([
-            compass.topAnchor.constraint(
+            scale.topAnchor.constraint(
                 equalTo: map.safeAreaLayoutGuide.topAnchor,
-                constant: ParkingMapConstants.chromeTopMargin
+                constant: 8
             ),
+            scale.centerXAnchor.constraint(equalTo: map.centerXAnchor),
+
             compass.trailingAnchor.constraint(
                 equalTo: map.safeAreaLayoutGuide.trailingAnchor,
-                constant: -12
+                constant: -15
             ),
+            compassBottomConstraint,
         ])
 
         let tap = UITapGestureRecognizer(
@@ -70,14 +83,36 @@ struct ParkingMapKitView: UIViewRepresentable {
         map.showsUserLocation = viewModel.isLocationAuthorized
         if let pending = viewModel.pendingCameraRegion {
             viewModel.pendingCameraRegion = nil
-            map.setRegion(pending, animated: true)
+            let currentCenter = map.region.center
+            let fromLocation = CLLocation(latitude: currentCenter.latitude, longitude: currentCenter.longitude)
+            let toLocation = CLLocation(latitude: pending.center.latitude, longitude: pending.center.longitude)
+            let distance = fromLocation.distance(from: toLocation)
+            let duration = ParkingMapConstants.cameraFlightDuration(distanceMeters: distance)
+
+            UIView.animate(
+                withDuration: duration,
+                delay: 0,
+                options: [.curveEaseInOut, .allowUserInteraction]
+            ) {
+                map.setRegion(pending, animated: false)
+            }
         }
+        if let targetPitch = viewModel.pendingCameraPitch {
+            viewModel.pendingCameraPitch = nil
+            let camera = map.camera.copy() as! MKMapCamera
+            camera.pitch = targetPitch
+            map.setCamera(camera, animated: true)
+        }
+        context.coordinator.updateBottomPadding(bottomPadding, on: map)
+        context.coordinator.syncMapStyle(on: map)
         context.coordinator.syncAnnotations(on: map)
         context.coordinator.syncOverlays(on: map)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var viewModel: ParkingMapViewModel
+        var compassBottomConstraint: NSLayoutConstraint?
+        private var lastMapStyle: MapViewStyle?
         private var lastRenderItems: [ParkingMapRenderItem] = []
         private var lastSelectedIDs: Set<String> = []
         private var lastSearchPinID: String?
@@ -87,6 +122,23 @@ struct ParkingMapKitView: UIViewRepresentable {
 
         init(viewModel: ParkingMapViewModel) {
             self.viewModel = viewModel
+        }
+
+        func updateBottomPadding(_ bottomPadding: CGFloat, on map: MKMapView) {
+            let target = -(bottomPadding + 148)
+            if compassBottomConstraint?.constant != target {
+                compassBottomConstraint?.constant = target
+                UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+                    map.layoutIfNeeded()
+                }
+            }
+        }
+
+        func syncMapStyle(on map: MKMapView) {
+            if viewModel.mapStyle != lastMapStyle {
+                lastMapStyle = viewModel.mapStyle
+                map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
+            }
         }
 
         func syncAnnotations(on map: MKMapView) {
@@ -258,9 +310,16 @@ struct ParkingMapKitView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let region = mapView.region
+            let pitch = mapView.camera.pitch
             Task { @MainActor in
+                viewModel.updatePitch(pitch)
                 await viewModel.handleRegionChange(region)
             }
+        }
+
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            guard let loc = userLocation.location else { return }
+            viewModel.updateUserCoordinate(loc.coordinate)
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -326,4 +385,23 @@ final class TapDotAnnotationView: MKAnnotationView {
         dotView.backgroundColor = dotAnnotation.color
     }
 }
+
+final class ParkkingMapView: MKMapView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        repositionAttributionAndLogo()
+    }
+
+    private func repositionAttributionAndLogo() {
+        for subview in subviews {
+            let className = NSStringFromClass(type(of: subview))
+            if className.contains("AppleLogo") || (subview is UIImageView && subview.bounds.width < 100 && subview.bounds.height < 40 && subview.frame.origin.y > bounds.height - 250) {
+                let x = (bounds.width - subview.bounds.width) / 2
+                let y = bounds.height - subview.bounds.height - max(safeAreaInsets.bottom, 4)
+                subview.frame = CGRect(x: x, y: y, width: subview.bounds.width, height: subview.bounds.height)
+            }
+        }
+    }
+}
+
 

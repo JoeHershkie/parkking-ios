@@ -56,9 +56,15 @@ final class ParkingMapViewModel {
     var isLocating = false
     var locationError: LocationClientError?
     var isLocationAuthorized = false
+    var isLocationCentered = false
+    var is3D = false
+    var pendingCameraPitch: CGFloat?
+    var mapStyle: MapViewStyle = .standard
+    private(set) var userCoordinate: CLLocationCoordinate2D?
     private(set) var lastFlownRegion: MKCoordinateRegion?
     private(set) var lastSelectionSource: SelectionSource?
 
+    private static let mapStyleStorageKey = "parkking.mapStyle"
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
@@ -106,7 +112,8 @@ final class ParkingMapViewModel {
         now: @escaping () -> Date = Date.init,
         dataset: ParkingDataset? = nil,
         startsClock: Bool = true,
-        openURL: ((URL) -> Void)? = nil
+        openURL: ((URL) -> Void)? = nil,
+        mapStyle: MapViewStyle? = nil
     ) {
         self.dataStore = dataStore
         self.locationClient = locationClient ?? LocationClient()
@@ -119,11 +126,25 @@ final class ParkingMapViewModel {
         self.recents = self.recentsStore.recents
         self.isLocationAuthorized = self.locationClient.isAuthorized
 
+        if let mapStyle {
+            self.mapStyle = mapStyle
+        } else if let saved = UserDefaults.standard.string(forKey: Self.mapStyleStorageKey),
+                  let resolved = MapViewStyle(rawValue: saved) {
+            self.mapStyle = resolved
+        } else {
+            self.mapStyle = .standard
+        }
+
         if let dataset {
             install(dataset)
         }
         resolveAppliedQuery(recomputeViewport: false)
         self.locationClient.delegate = self
+    }
+
+    func setMapStyle(_ style: MapViewStyle) {
+        self.mapStyle = style
+        UserDefaults.standard.set(style.rawValue, forKey: Self.mapStyleStorageKey)
     }
 
     func onAppear() {
@@ -145,8 +166,9 @@ final class ParkingMapViewModel {
     }
 
     func start() async {
-        await loadIfNeeded()
-        await maybeAutoLocate()
+        async let loadData: Void = loadIfNeeded()
+        async let locate: Void = maybeAutoLocate()
+        _ = await (loadData, locate)
     }
 
     func retry() {
@@ -173,7 +195,40 @@ final class ParkingMapViewModel {
         visibleRegion = region
         curbVisible = ParkingMapConstants.visibleWidthMeters(region)
             <= ParkingMapConstants.curbVisibleMaxWidthMeters
+        if let userCoordinate {
+            let latDelta = abs(region.center.latitude - userCoordinate.latitude)
+            let lngDelta = abs(region.center.longitude - userCoordinate.longitude)
+            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
+        } else {
+            isLocationCentered = false
+        }
         await refreshViewport(region: region)
+    }
+
+    func updateUserCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        userCoordinate = coordinate
+        if let visibleRegion {
+            let latDelta = abs(visibleRegion.center.latitude - coordinate.latitude)
+            let lngDelta = abs(visibleRegion.center.longitude - coordinate.longitude)
+            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
+        }
+    }
+
+    func toggle3D() {
+        if is3D {
+            is3D = false
+            pendingCameraPitch = 0
+        } else {
+            is3D = true
+            pendingCameraPitch = 55
+        }
+    }
+
+    func updatePitch(_ pitch: CGFloat) {
+        let now3D = pitch > 20
+        if is3D != now3D {
+            is3D = now3D
+        }
     }
 
     func handleTap(at coordinate: CLLocationCoordinate2D) {
@@ -261,7 +316,6 @@ final class ParkingMapViewModel {
     }
 
     func tapLocateAsync() async {
-        guard isDataReady else { return }
         locationError = nil
 
         if !locationClient.servicesEnabled {
@@ -340,7 +394,7 @@ final class ParkingMapViewModel {
                 return first
             }
         }
-        return nil
+        return userCoordinate
     }
 
     func selectAtPoint(
@@ -363,7 +417,7 @@ final class ParkingMapViewModel {
             curbVisible = true
         }
 
-        if source == .search || source == .recent || source == .gps {
+        if source == .search || source == .recent {
             searchPin = SearchPinAnnotation(
                 coordinate: coordinate,
                 title: label,
@@ -514,6 +568,22 @@ final class ParkingMapViewModel {
         }
     }
 
+    private func buildCandidateCoordinates(
+        nearest: CLLocationCoordinate2D,
+        primaryFeature: ParkingFeature?
+    ) -> [CLLocationCoordinate2D] {
+        var candidates: [CLLocationCoordinate2D] = [nearest]
+        guard let primaryFeature, let coords = primaryFeature.coordinateParts.first, coords.count >= 2 else {
+            return candidates
+        }
+
+        let midIndex = coords.count / 2
+        candidates.append(coords[midIndex])
+        candidates.append(coords[0])
+        candidates.append(coords[coords.count - 1])
+        return candidates
+    }
+
     func selectAtPoint(
         coordinate: CLLocationCoordinate2D,
         label: String?,
@@ -640,7 +710,6 @@ final class ParkingMapViewModel {
 
     private func maybeAutoLocate() async {
         guard !didAutoLocateThisLaunch else { return }
-        guard isDataReady else { return }
         guard locationClient.servicesEnabled else { return }
         guard locationClient.isAuthorized else { return }
         didAutoLocateThisLaunch = true
@@ -653,11 +722,14 @@ final class ParkingMapViewModel {
         do {
             let location = try await locationClient.requestOneShotLocation()
             didAutoLocateThisLaunch = true
-            selectAtPoint(
-                coordinate: location.coordinate,
-                label: "Current location",
-                source: .gps
-            )
+            userCoordinate = location.coordinate
+            isLocationCentered = true
+            let region = ParkingMapConstants.neighborhoodRegion(around: location.coordinate)
+            pendingCameraRegion = region
+            lastFlownRegion = region
+            visibleRegion = region
+            curbVisible = true
+            Task { await self.refreshViewport(region: region) }
         } catch let error as LocationClientError {
             locationError = error
         } catch {
@@ -706,20 +778,5 @@ final class ParkingMapViewModel {
 extension ParkingMapViewModel: LocationClientDelegate {
     func locationClientDidChangeAuthorization(_ client: LocationProviding) {
         Task { await handleAuthorizationChange() }
-    }
-    private func buildCandidateCoordinates(
-        nearest: CLLocationCoordinate2D,
-        primaryFeature: ParkingFeature?
-    ) -> [CLLocationCoordinate2D] {
-        var candidates: [CLLocationCoordinate2D] = [nearest]
-        guard let primaryFeature, let coords = primaryFeature.coordinateParts.first, coords.count >= 2 else {
-            return candidates
-        }
-
-        let midIndex = coords.count / 2
-        candidates.append(coords[midIndex])
-        candidates.append(coords[0])
-        candidates.append(coords[coords.count - 1])
-        return candidates
     }
 }

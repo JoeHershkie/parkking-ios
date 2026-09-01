@@ -163,6 +163,7 @@ struct ParkingMapViewModelTests {
         // Should NOT show "551 Fairlawn Ave" because Fairlawn Ave doesn't match Queen St W
         #expect(vm.cardAddress != "551 Fairlawn Ave")
         #expect(vm.cardAddress == "Queen Street West" || vm.cardAddress?.contains("Queen") == true)
+        #expect(vm.activeSelectionCoordinate != nil)
     }
 
     @Test("zoom threshold changes coaching and never auto-selects")
@@ -318,5 +319,104 @@ struct ParkingMapViewModelTests {
         vm.handleTap(at: ParkingMapTestFixtures.queenSouth)
         #expect(vm.selection?.selected?.side != firstSide)
         #expect(vm.selectedFeatureIDs.count == 1)
+    }
+
+    @Test("map style switches between explore, driving, transit, and satellite configurations")
+    func mapStyleSwitchingAndConfigurations() {
+        let vm = ParkingMapTestFixtures.viewModel(mapStyle: .standard)
+        #expect(vm.mapStyle == .standard)
+
+        let standardConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(standardConfig != nil)
+        #expect(standardConfig?.showsTraffic == false)
+
+        vm.setMapStyle(.driving)
+        #expect(vm.mapStyle == .driving)
+        let drivingConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(drivingConfig != nil)
+        #expect(drivingConfig?.showsTraffic == true)
+
+        vm.setMapStyle(.transit)
+        #expect(vm.mapStyle == .transit)
+        let transitConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(transitConfig != nil)
+        #expect(transitConfig?.pointOfInterestFilter != nil)
+
+        vm.setMapStyle(.satellite)
+        #expect(vm.mapStyle == .satellite)
+        let satelliteConfig = vm.mapStyle.makeConfiguration() as? MKHybridMapConfiguration
+        #expect(satelliteConfig != nil)
+        #expect(satelliteConfig?.elevationStyle == .realistic)
+    }
+
+    @Test("location centered state tracks distance between visible region and user coordinate")
+    func locationCenteredTracking() async {
+        let location = MockLocationClient()
+        location.nextLocation = CLLocation(
+            latitude: ParkingMapTestFixtures.queenNorth.latitude,
+            longitude: ParkingMapTestFixtures.queenNorth.longitude
+        )
+        location.authorizationStatus = .authorizedWhenInUse
+        let vm = ParkingMapTestFixtures.viewModel(location: location)
+        #expect(vm.isLocationCentered == false)
+
+        await vm.start()
+        #expect(vm.isLocationCentered == true)
+        #expect(vm.userCoordinate != nil)
+
+        // Panning away uncenters the location
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedOutRegion)
+        #expect(vm.isLocationCentered == false)
+
+        // Panning back to user coordinate re-centers the location
+        await vm.handleRegionChange(MKCoordinateRegion(
+            center: ParkingMapTestFixtures.queenNorth,
+            span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.006)
+        ))
+        #expect(vm.isLocationCentered == true)
+    }
+
+    @Test("3D and 2D toggle and camera pitch handling")
+    func threeDToggleAndPitch() {
+        let vm = ParkingMapTestFixtures.viewModel()
+        #expect(vm.is3D == false)
+        #expect(vm.pendingCameraPitch == nil)
+
+        vm.toggle3D()
+        #expect(vm.is3D == true)
+        #expect(vm.pendingCameraPitch == 55)
+
+        vm.toggle3D()
+        #expect(vm.is3D == false)
+        #expect(vm.pendingCameraPitch == 0)
+
+        vm.updatePitch(45)
+        #expect(vm.is3D == true)
+
+        vm.updatePitch(10)
+        #expect(vm.is3D == false)
+    }
+
+    @Test("camera flight duration scales monotonically with distance and respects min/max bounds")
+    func cameraFlightDurationScaling() {
+        let d0 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 0)
+        let d100 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 100)
+        let d1000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 1_000)
+        let d5000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 5_000)
+        let d20000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 20_000)
+        let d100000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 100_000)
+
+        #expect(d0 == 0.4)
+        #expect(d100 > d0)
+        #expect(d1000 > d100)
+        #expect(d5000 > d1000)
+        #expect(d20000 > d5000)
+        #expect(d100000 == 2.4)
+
+        // Verify reasonable ranges
+        #expect(d100 >= 0.4 && d100 <= 1.0)
+        #expect(d1000 >= 1.0 && d1000 <= 1.6)
+        #expect(d5000 >= 1.6 && d5000 <= 2.2)
+        #expect(d20000 >= 2.0 && d20000 <= 2.4)
     }
 }

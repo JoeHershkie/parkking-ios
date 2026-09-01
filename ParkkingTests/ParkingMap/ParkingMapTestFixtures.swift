@@ -115,7 +115,8 @@ enum ParkingMapTestFixtures {
         recents: RecentsStore? = nil,
         geocoding: MockGeocodingClient? = nil,
         dataset: ParkingDataset? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        mapStyle: MapViewStyle? = nil
     ) -> ParkingMapViewModel {
         ParkingMapViewModel(
             locationClient: location ?? MockLocationClient(),
@@ -123,7 +124,8 @@ enum ParkingMapTestFixtures {
             geocodingClient: geocoding ?? MockGeocodingClient(),
             now: now,
             dataset: dataset ?? queenStreetDataset(),
-            startsClock: false
+            startsClock: false,
+            mapStyle: mapStyle
         )
     }
 }
