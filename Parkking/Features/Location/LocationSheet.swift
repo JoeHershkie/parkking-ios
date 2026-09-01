@@ -10,9 +10,14 @@ struct SearchSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Capsule()
+                .fill(Color(uiColor: .tertiaryLabel))
+                .frame(width: 54, height: 5)
+                .padding(.top, (detent == .height(76) && !isSearchFocused) ? 1 : 6)
+
             searchBar
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.top, (detent == .height(76) && !isSearchFocused) ? 3 : 6)
                 .padding(.bottom, 8)
 
             if detent != .height(76) || isSearchFocused {
@@ -90,6 +95,9 @@ struct SearchSheet: View {
             }
 
             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if !viewModel.favorites.isEmpty {
+                    favoritesSection
+                }
                 recentsSection
             } else if !searchClient.isSearching {
                 resultsSection
@@ -97,6 +105,51 @@ struct SearchSheet: View {
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    @ViewBuilder
+    private var favoritesSection: some View {
+        Section {
+            ForEach(viewModel.favorites) { favorite in
+                HStack(spacing: 12) {
+                    Button {
+                        pickFavorite(favorite)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "star.fill")
+                                .foregroundStyle(.yellow)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(favorite.label)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                if let subtitle = favorite.subtitle, !subtitle.isEmpty {
+                                    Text(subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(favorite.label)
+                    .accessibilityValue(favorite.subtitle ?? "")
+                    .accessibilityHint("Use this favorite location")
+
+                    Button(role: .destructive) {
+                        viewModel.removeFavorite(id: favorite.id)
+                    } label: {
+                        Image(systemName: "trash")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(favorite.label) from favorites")
+                }
+            }
+        } header: {
+            Text("Favorites")
+        }
     }
 
     @ViewBuilder
@@ -150,7 +203,7 @@ struct SearchSheet: View {
                 Text("Recent")
                 Spacer()
                 if !viewModel.recents.isEmpty {
-                    Button("Clear history") {
+                    Button("Clear") {
                         viewModel.clearRecents()
                     }
                     .font(.caption.weight(.semibold))
@@ -191,6 +244,18 @@ struct SearchSheet: View {
                 .accessibilityValue(completion.subtitle)
             }
         }
+    }
+
+    private func pickFavorite(_ favorite: SavedLocation) {
+        resolveError = nil
+        isSearchFocused = false
+        detent = .height(76)
+        _ = viewModel.selectSearchResult(
+            title: favorite.label,
+            subtitle: favorite.subtitle,
+            coordinate: favorite.coordinate,
+            source: .recent
+        )
     }
 
     private func pickRecent(_ recent: SavedLocation) {

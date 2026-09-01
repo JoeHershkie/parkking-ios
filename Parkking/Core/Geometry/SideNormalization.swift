@@ -59,7 +59,8 @@ enum SideNormalization {
         guard let street, !street.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Unknown street"
         }
-        return street
+        let cleaned = AddressFormatter.cleanAddress(street) ?? street
+        return cleaned
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
     }

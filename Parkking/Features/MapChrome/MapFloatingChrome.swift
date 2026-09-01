@@ -2,12 +2,14 @@ import SwiftUI
 
 struct MapFloatingChrome: View {
     @Bindable var viewModel: ParkingMapViewModel
+    var bottomPadding: CGFloat = 88
 
     @State var isPressed = false
     var body: some View {
         VStack(spacing: 10) {
             coachingPromptPill
                 .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 16)
 
             if let error = viewModel.locationError {
                 LocationPermissionBanner(
@@ -15,19 +17,59 @@ struct MapFloatingChrome: View {
                     showsSettings: error.canOpenSettings,
                     onOpenSettings: { viewModel.openSettings() }
                 )
+                .padding(.horizontal, 16)
             }
 
             Spacer()
 
             HStack {
                 Spacer()
-                gpsButton
+                rightControlsStack
+                    .opacity(bottomPadding > 650 ? 0 : 1)
             }
-            .padding(.trailing, 16)
-            .padding(.bottom, 90)
+            .padding(.trailing, 15)
+            .padding(.bottom, bottomPadding)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: bottomPadding)
         }
-        .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    private var rightControlsStack: some View {
+        VStack(spacing: 8) {
+            threeDButton
+            connectedControlsPill
+        }
+    }
+
+    private var threeDButton: some View {
+        Button {
+            viewModel.toggle3D()
+        } label: {
+            Text(viewModel.is3D ? "2D" : "3D")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.primary)
+                .frame(width: 44, height: 44)
+                .background(.regularMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.is3D ? "Switch to 2D view" : "Switch to 3D view")
+    }
+
+    private var connectedControlsPill: some View {
+        VStack(spacing: 0) {
+            mapStyleMenu
+                .frame(width: 44, height: 44)
+
+            Rectangle()
+                .fill(Color(uiColor: .separator).opacity(0.35))
+                .frame(width: 28, height: 0.5)
+
+            gpsButton
+                .frame(width: 44, height: 44)
+        }
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
     }
 
     @ViewBuilder
@@ -43,7 +85,11 @@ struct MapFloatingChrome: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial, in: Capsule())
-                .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
                 .accessibilityElement(children: .combine)
 
             case .failed(let message):
@@ -64,7 +110,11 @@ struct MapFloatingChrome: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
 
             case .zoomIn:
                 if let text = viewModel.sheetPrompt.coachingText {
@@ -73,7 +123,11 @@ struct MapFloatingChrome: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(.ultraThinMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
                 }
 
             case .tapPrompt:
@@ -83,13 +137,40 @@ struct MapFloatingChrome: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(.ultraThinMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
                 }
 
             case .idle, .verdict:
                 EmptyView()
             }
         }
+    }
+
+    private var mapStyleMenu: some View {
+        Menu {
+            Picker("Map Style", selection: Binding(
+                get: { viewModel.mapStyle },
+                set: { viewModel.setMapStyle($0) }
+            )) {
+                ForEach(MapViewStyle.allCases) { style in
+                    Label(style.title, systemImage: style.iconName)
+                        .tag(style)
+                }
+            }
+        } label: {
+            Image(systemName: "map.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(Color.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Map style")
+        .accessibilityValue(viewModel.mapStyle.title)
+        .accessibilityHint("Change map style between Explore, Driving, Transit, and 3D Satellite")
     }
 
     private var gpsButton: some View {
@@ -100,17 +181,16 @@ struct MapFloatingChrome: View {
                 if viewModel.isLocating {
                     ProgressView()
                 } else {
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(viewModel.isLocationAuthorized ? Color.accentColor : Color.primary)
+                    Image(systemName: viewModel.isLocationCentered ? "location.fill" : "location")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .systemBlue))
                 }
             }
-            .frame(width: 48, height: 48)
-            .background(.ultraThinMaterial, in: Circle())
-            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!viewModel.isDataReady || viewModel.isLocating)
+        .disabled(viewModel.isLocating)
         .accessibilityLabel("Use my location")
         .accessibilityValue(gpsAccessibilityValue)
         .accessibilityHint("Find parking near your current location")
@@ -118,6 +198,7 @@ struct MapFloatingChrome: View {
 
     private var gpsAccessibilityValue: String {
         if viewModel.isLocating { return "Locating" }
+        if viewModel.isLocationCentered { return "Centered at current location" }
         if viewModel.isLocationAuthorized { return "Authorized" }
         return "Not authorized"
     }
@@ -143,6 +224,11 @@ struct LocationPermissionBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
         .accessibilityElement(children: .combine)
     }
 }

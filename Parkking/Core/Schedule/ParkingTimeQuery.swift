@@ -286,23 +286,25 @@ enum ParkingTimeQuery {
         let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         let dayName = dayNames[max(0, min(6, slot.dayOfWeek))]
 
-        let datePrefix: String
-        if daysDifference == 0 {
-            datePrefix = "Today"
-        } else if daysDifference >= 1 && daysDifference <= 6 {
-            datePrefix = dayName
-        } else if slotYear == nowYear {
-            datePrefix = String(format: "%@ %02d-%02d", dayName, slot.month, slot.dayOfMonth)
-        } else {
-            datePrefix = String(format: "%@ %04d-%02d-%02d", dayName, slotYear, slot.month, slot.dayOfMonth)
-        }
-
         let startFormatted = formatTime(slot.minuteOfDay)
+        let timeString: String
         if let endMinuteOfDay, endMinuteOfDay > slot.minuteOfDay {
             let endFormatted = formatTime(endMinuteOfDay)
-            return "\(datePrefix) from \(startFormatted) - \(endFormatted)"
+            timeString = "\(startFormatted) - \(endFormatted)"
         } else {
-            return "\(datePrefix) from \(startFormatted)"
+            timeString = startFormatted
+        }
+
+        if daysDifference == 0 {
+            return timeString
+        } else if daysDifference >= 1 && daysDifference <= 6 {
+            return "\(dayName), \(timeString)"
+        } else if slotYear == nowYear {
+            let datePrefix = String(format: "%@ %02d-%02d", dayName, slot.month, slot.dayOfMonth)
+            return "\(datePrefix), \(timeString)"
+        } else {
+            let datePrefix = String(format: "%@ %04d-%02d-%02d", dayName, slotYear, slot.month, slot.dayOfMonth)
+            return "\(datePrefix), \(timeString)"
         }
     }
 }

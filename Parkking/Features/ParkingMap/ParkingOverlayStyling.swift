@@ -31,14 +31,27 @@ enum ParkingOverlayBucketKind: String, Hashable, Sendable {
         }
     }
 
-    /// Base width for all regular segment types. Uncertain segments are thinner than confident curb segments.
-    nonisolated var lineWidth: CGFloat {
-        switch self {
-        case .allowedUncertain, .unclearUncertain, .restrictedUncertain:
-            return 3
-        default:
-            return 5
+    /// Base width for all regular segment types. Calibrated for satellite 3D perspective rendering.
+    nonisolated func lineWidth(isSatellite: Bool = false) -> CGFloat {
+        if isSatellite {
+            switch self {
+            case .allowedUncertain, .unclearUncertain, .restrictedUncertain:
+                return 2.5
+            default:
+                return 3.5
+            }
+        } else {
+            switch self {
+            case .allowedUncertain, .unclearUncertain, .restrictedUncertain:
+                return 3
+            default:
+                return 5
+            }
         }
+    }
+
+    nonisolated var lineWidth: CGFloat {
+        lineWidth(isSatellite: false)
     }
 
     nonisolated var lineCap: CGLineCap {
@@ -76,9 +89,18 @@ enum ParkingOverlayRole: Sendable {
 }
 
 enum ParkingOverlayStyling {
+    nonisolated static let standardLineWidth: CGFloat = 5
     nonisolated static let selectedLineWidth: CGFloat = 8
     nonisolated static let selectedBorderWidth: CGFloat = 11
     nonisolated static let selectedBorderColor: UIColor = .black
+
+    nonisolated static func selectedLineWidth(isSatellite: Bool = false) -> CGFloat {
+        isSatellite ? 5.5 : 8.0
+    }
+
+    nonisolated static func selectedBorderWidth(isSatellite: Bool = false) -> CGFloat {
+        isSatellite ? 8.0 : 11.0
+    }
 
     struct Plan: Equatable, Sendable {
         var colorBuckets: [ParkingOverlayBucketKind: [ParkingMapRenderItem.ID]]
@@ -138,15 +160,18 @@ enum ParkingOverlayStyling {
 final class ParkingStyledOverlay: MKMultiPolyline {
     let kind: ParkingOverlayBucketKind
     let role: ParkingOverlayRole
+    let isSatellite: Bool
     let itemIDs: [ParkingMapRenderItem.ID]
 
     init(
         kind: ParkingOverlayBucketKind,
         role: ParkingOverlayRole = .base,
+        isSatellite: Bool = false,
         items: [ParkingMapRenderItem]
     ) {
         self.kind = kind
         self.role = role
+        self.isSatellite = isSatellite
         self.itemIDs = items.map(\.id)
         let polylines: [MKPolyline] = items.compactMap { item in
             guard item.coordinates.count >= 2 else { return nil }
@@ -158,22 +183,23 @@ final class ParkingStyledOverlay: MKMultiPolyline {
 
     var strokeColor: UIColor {
         switch role {
-        case .base, .selectedFill:
+        case .base:
             return kind.alpha == 1 ? kind.strokeColor : kind.strokeColor.withAlphaComponent(kind.alpha)
+        case .selectedFill:
+            return kind.strokeColor
         case .selectedBorder:
-            let alpha: CGFloat = kind.alpha == 1 ? 1.0 : 0.85
-            return alpha == 1 ? ParkingOverlayStyling.selectedBorderColor : ParkingOverlayStyling.selectedBorderColor.withAlphaComponent(alpha)
+            return ParkingOverlayStyling.selectedBorderColor
         }
     }
 
     var lineWidth: CGFloat {
         switch role {
         case .base:
-            return kind.lineWidth
+            return kind.lineWidth(isSatellite: isSatellite)
         case .selectedFill:
-            return ParkingOverlayStyling.selectedLineWidth
+            return ParkingOverlayStyling.selectedLineWidth(isSatellite: isSatellite)
         case .selectedBorder:
-            return ParkingOverlayStyling.selectedBorderWidth
+            return ParkingOverlayStyling.selectedBorderWidth(isSatellite: isSatellite)
         }
     }
 
@@ -182,7 +208,7 @@ final class ParkingStyledOverlay: MKMultiPolyline {
         case .base:
             return kind.lineCap
         case .selectedFill, .selectedBorder:
-            return .round
+            return kind.dashPattern.isEmpty ? .round : .butt
         }
     }
 

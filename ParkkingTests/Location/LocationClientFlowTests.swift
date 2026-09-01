@@ -35,9 +35,9 @@ struct LocationClientFlowTests {
         location.authorizationStatus = .authorizedWhenInUse
         await vm.handleAuthorizationChange()
         #expect(location.requestLocationCallCount == 1)
-        #expect(vm.lastSelectionSource == .gps)
+        #expect(vm.isLocationCentered)
         #expect(vm.lastFlownRegion != nil)
-        #expect(vm.locationLabel == "Current location")
+        #expect(vm.searchPin == nil)
         #expect(recents.recents.isEmpty)
         #expect(vm.isLocationAuthorized)
     }

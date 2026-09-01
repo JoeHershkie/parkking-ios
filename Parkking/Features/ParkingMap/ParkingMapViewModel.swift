@@ -53,15 +53,23 @@ final class ParkingMapViewModel {
     var sheetExpanded = false
     var locationLabel = "Search or tap the map"
     var recents: [SavedLocation] = []
+    var favorites: [SavedLocation] = []
     var isLocating = false
     var locationError: LocationClientError?
     var isLocationAuthorized = false
+    var isLocationCentered = false
+    var is3D = false
+    var pendingCameraPitch: CGFloat?
+    var mapStyle: MapViewStyle = .standard
+    private(set) var userCoordinate: CLLocationCoordinate2D?
     private(set) var lastFlownRegion: MKCoordinateRegion?
     private(set) var lastSelectionSource: SelectionSource?
 
+    private static let mapStyleStorageKey = "parkking.mapStyle"
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
+    private let favoritesStore: any FavoritesStoring
     private let geocodingClient: any GeocodingProviding
     private let now: () -> Date
     private let startsClock: Bool
@@ -102,28 +110,46 @@ final class ParkingMapViewModel {
         dataStore: ParkingDataStore = ParkingDataStore(),
         locationClient: (any LocationProviding)? = nil,
         recentsStore: (any RecentsStoring)? = nil,
+        favoritesStore: (any FavoritesStoring)? = nil,
         geocodingClient: (any GeocodingProviding)? = nil,
         now: @escaping () -> Date = Date.init,
         dataset: ParkingDataset? = nil,
         startsClock: Bool = true,
-        openURL: ((URL) -> Void)? = nil
+        openURL: ((URL) -> Void)? = nil,
+        mapStyle: MapViewStyle? = nil
     ) {
         self.dataStore = dataStore
         self.locationClient = locationClient ?? LocationClient()
         self.recentsStore = recentsStore ?? RecentsStore()
+        self.favoritesStore = favoritesStore ?? FavoritesStore()
         self.geocodingClient = geocodingClient ?? MapKitGeocodingClient()
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }
         self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(now: now())
         self.recents = self.recentsStore.recents
+        self.favorites = self.favoritesStore.favorites
         self.isLocationAuthorized = self.locationClient.isAuthorized
+
+        if let mapStyle {
+            self.mapStyle = mapStyle
+        } else if let saved = UserDefaults.standard.string(forKey: Self.mapStyleStorageKey),
+                  let resolved = MapViewStyle(rawValue: saved) {
+            self.mapStyle = resolved
+        } else {
+            self.mapStyle = .standard
+        }
 
         if let dataset {
             install(dataset)
         }
         resolveAppliedQuery(recomputeViewport: false)
         self.locationClient.delegate = self
+    }
+
+    func setMapStyle(_ style: MapViewStyle) {
+        self.mapStyle = style
+        UserDefaults.standard.set(style.rawValue, forKey: Self.mapStyleStorageKey)
     }
 
     func onAppear() {
@@ -145,8 +171,9 @@ final class ParkingMapViewModel {
     }
 
     func start() async {
-        await loadIfNeeded()
-        await maybeAutoLocate()
+        async let loadData: Void = loadIfNeeded()
+        async let locate: Void = maybeAutoLocate()
+        _ = await (loadData, locate)
     }
 
     func retry() {
@@ -173,11 +200,53 @@ final class ParkingMapViewModel {
         visibleRegion = region
         curbVisible = ParkingMapConstants.visibleWidthMeters(region)
             <= ParkingMapConstants.curbVisibleMaxWidthMeters
+        if let userCoordinate {
+            let latDelta = abs(region.center.latitude - userCoordinate.latitude)
+            let lngDelta = abs(region.center.longitude - userCoordinate.longitude)
+            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
+        } else {
+            isLocationCentered = false
+        }
         await refreshViewport(region: region)
+    }
+
+    func updateUserCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        userCoordinate = coordinate
+        if let visibleRegion {
+            let latDelta = abs(visibleRegion.center.latitude - coordinate.latitude)
+            let lngDelta = abs(visibleRegion.center.longitude - coordinate.longitude)
+            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
+        }
+    }
+
+    func toggle3D() {
+        if is3D {
+            is3D = false
+            pendingCameraPitch = 0
+        } else {
+            is3D = true
+            pendingCameraPitch = 55
+        }
+    }
+
+    func updatePitch(_ pitch: CGFloat) {
+        let now3D = pitch > 20
+        if is3D != now3D {
+            is3D = now3D
+        }
     }
 
     func handleTap(at coordinate: CLLocationCoordinate2D) {
         selectAtPoint(coordinate: coordinate, label: nil, source: .tap)
+    }
+
+    func handleLongPress(at coordinate: CLLocationCoordinate2D) {
+        selectAtPoint(
+            coordinate: coordinate,
+            label: "Dropped Pin",
+            subtitle: nil,
+            source: .search
+        )
     }
 
     func selectGroup(_ groupKey: String) {
@@ -261,7 +330,6 @@ final class ParkingMapViewModel {
     }
 
     func tapLocateAsync() async {
-        guard isDataReady else { return }
         locationError = nil
 
         if !locationClient.servicesEnabled {
@@ -327,6 +395,59 @@ final class ParkingMapViewModel {
         recents = recentsStore.clear()
     }
 
+    func isFavorite(id: String) -> Bool {
+        favoritesStore.isFavorite(id: id)
+    }
+
+    func isFavorite(coordinate: CLLocationCoordinate2D, label: String) -> Bool {
+        favoritesStore.isFavorite(coordinate: coordinate, label: label)
+    }
+
+    var isCurrentSelectionFavorite: Bool {
+        guard let coord = activeSelectionCoordinate,
+              let label = cardAddress ?? selection?.selected?.street ?? searchPin?.title else {
+            return false
+        }
+        return isFavorite(coordinate: coord, label: label)
+    }
+
+    func toggleFavorite(label: String, subtitle: String? = nil, coordinate: CLLocationCoordinate2D) {
+        _ = favoritesStore.toggle(label: label, subtitle: subtitle, coordinate: coordinate)
+        favorites = favoritesStore.favorites
+    }
+
+    func toggleCurrentSelectionFavorite() {
+        guard let coord = activeSelectionCoordinate,
+              let label = cardAddress ?? selection?.selected?.street ?? searchPin?.title else {
+            return
+        }
+        toggleFavorite(label: label, subtitle: nil, coordinate: coord)
+    }
+
+    func removeFavorite(id: String) {
+        favorites = favoritesStore.remove(id: id)
+    }
+
+    func clearFavorites() {
+        favorites = favoritesStore.clear()
+    }
+
+    var activeSelectionCoordinate: CLLocationCoordinate2D? {
+        if let tapDot {
+            return tapDot.coordinate
+        }
+        if let searchPin {
+            return searchPin.coordinate
+        }
+        if let group = selection?.selected,
+           let primary = group.features.first(where: { group.highlightFeatureIDs.contains($0.id) }) ?? group.features.first {
+            if let first = primary.coordinateParts.first?.first {
+                return first
+            }
+        }
+        return userCoordinate
+    }
+
     func selectAtPoint(
         coordinate: CLLocationCoordinate2D,
         label: String?,
@@ -347,7 +468,7 @@ final class ParkingMapViewModel {
             curbVisible = true
         }
 
-        if source == .search || source == .recent || source == .gps {
+        if source == .search || source == .recent {
             searchPin = SearchPinAnnotation(
                 coordinate: coordinate,
                 title: label,
@@ -409,8 +530,9 @@ final class ParkingMapViewModel {
                 isResultPresented = true
                 hasTappedSegmentThisSession = true
 
+                let primaryFeature = selected.features.first(where: { selected.highlightFeatureIDs.contains($0.id) }) ?? selected.features.first
                 let nearestCoord: CLLocationCoordinate2D
-                if let primaryFeature = selected.features.first(where: { selected.highlightFeatureIDs.contains($0.id) }) ?? selected.features.first,
+                if let primaryFeature,
                    let nearest = CurbGeometry.nearestPointOnFeatureMeters(point: point, feature: primaryFeature) {
                     nearestCoord = CLLocationCoordinate2D(latitude: nearest.point.lat, longitude: nearest.point.lng)
                 } else {
@@ -423,14 +545,26 @@ final class ParkingMapViewModel {
                 cardAddress = selected.street
                 locationLabel = selected.street
 
-                let lookupCoord = coordinate
+                let targetStreet = selected.street
+                let candidateCoords = buildCandidateCoordinates(nearest: nearestCoord, primaryFeature: primaryFeature)
+
                 reverseGeocodeTask = Task { [weak self] in
                     guard let self else { return }
-                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
-                        await MainActor.run {
-                            self.cardAddress = address
-                            self.locationLabel = address
+                    for candidate in candidateCoords {
+                        if Task.isCancelled { return }
+                        if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: candidate),
+                           let cleaned = AddressFormatter.cleanAddress(rawAddress),
+                           AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
+                            await MainActor.run {
+                                self.cardAddress = cleaned
+                                self.locationLabel = cleaned
+                            }
+                            return
                         }
+                    }
+                    await MainActor.run {
+                        self.cardAddress = targetStreet
+                        self.locationLabel = targetStreet
                     }
                 }
             } else {
@@ -443,7 +577,8 @@ final class ParkingMapViewModel {
             hasTappedSegmentThisSession = true
             tapDot = nil
 
-            let displayTitle = label ?? subtitle ?? result.selected?.street
+            let rawTitle = label ?? subtitle ?? result.selected?.street
+            let displayTitle = AddressFormatter.cleanAddress(rawTitle) ?? rawTitle
             cardAddress = displayTitle
             locationLabel = displayTitle
                 ?? String(
@@ -454,17 +589,35 @@ final class ParkingMapViewModel {
 
             let isCoordinateOrGeneric = label == nil
                 || label == "Current location"
+                || label == "Dropped Pin"
                 || label?.contains("°") == true
                 || (label?.split(separator: ",").count == 2 && Double(label!.split(separator: ",")[0].trimmingCharacters(in: .whitespaces)) != nil)
 
             if isCoordinateOrGeneric {
                 let lookupCoord = coordinate
+                let targetStreet = result.selected?.street
                 reverseGeocodeTask = Task { [weak self] in
                     guard let self else { return }
-                    if let address = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord) {
+                    if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord),
+                       let cleaned = AddressFormatter.cleanAddress(rawAddress) {
                         await MainActor.run {
-                            self.cardAddress = address
-                            self.locationLabel = address
+                            self.cardAddress = cleaned
+                            self.locationLabel = cleaned
+                            if let targetStreet, !AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
+                                // Address of the dropped pin / search is on a street with no mapped bylaw segments.
+                                // Show the address of the pin, do not highlight unrelated segment, give "Likely allowed" verdict.
+                                self.selectedFeatureIDs = []
+                                self.selection = nil
+                                if let resolved = self.resolvedQuery {
+                                    self.verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
+                                        features: [],
+                                        resolved: resolved,
+                                        street: cleaned,
+                                        side: nil,
+                                        sideDisplay: nil
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -474,6 +627,22 @@ final class ParkingMapViewModel {
         if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
         }
+    }
+
+    private func buildCandidateCoordinates(
+        nearest: CLLocationCoordinate2D,
+        primaryFeature: ParkingFeature?
+    ) -> [CLLocationCoordinate2D] {
+        var candidates: [CLLocationCoordinate2D] = [nearest]
+        guard let primaryFeature, let coords = primaryFeature.coordinateParts.first, coords.count >= 2 else {
+            return candidates
+        }
+
+        let midIndex = coords.count / 2
+        candidates.append(coords[midIndex])
+        candidates.append(coords[0])
+        candidates.append(coords[coords.count - 1])
+        return candidates
     }
 
     func selectAtPoint(
@@ -602,7 +771,6 @@ final class ParkingMapViewModel {
 
     private func maybeAutoLocate() async {
         guard !didAutoLocateThisLaunch else { return }
-        guard isDataReady else { return }
         guard locationClient.servicesEnabled else { return }
         guard locationClient.isAuthorized else { return }
         didAutoLocateThisLaunch = true
@@ -615,11 +783,14 @@ final class ParkingMapViewModel {
         do {
             let location = try await locationClient.requestOneShotLocation()
             didAutoLocateThisLaunch = true
-            selectAtPoint(
-                coordinate: location.coordinate,
-                label: "Current location",
-                source: .gps
-            )
+            userCoordinate = location.coordinate
+            isLocationCentered = true
+            let region = ParkingMapConstants.neighborhoodRegion(around: location.coordinate)
+            pendingCameraRegion = region
+            lastFlownRegion = region
+            visibleRegion = region
+            curbVisible = true
+            Task { await self.refreshViewport(region: region) }
         } catch let error as LocationClientError {
             locationError = error
         } catch {

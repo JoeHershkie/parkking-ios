@@ -145,6 +145,49 @@ struct ParkingMapViewModelTests {
         #expect(vm.cardAddress == "100 Queen St W")
     }
 
+    @Test("pressing and holding a location drops a search pin and presents verdict")
+    func longPressDropsPinAndPresentsVerdict() async {
+        let geocoding = MockGeocodingClient(defaultResult: "124 Queen St W")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        vm.handleLongPress(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+        #expect(vm.searchPin?.title == "Dropped Pin")
+        #expect(vm.tapDot == nil)
+        #expect(vm.selection?.selected != nil)
+        #expect(vm.verdict != nil)
+
+        for _ in 0..<20 {
+            if vm.cardAddress == "124 Queen St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "124 Queen St W")
+    }
+
+    @Test("reverse geocode rejects cross-street addresses and keeps segment street")
+    func sameStreetAddressValidation() async {
+        let geocoding = MockGeocodingClient(defaultResult: "551 Fairlawn Ave, North York")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Tap on Queen North (street = "Queen Street West")
+        vm.handleTap(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.tapDot != nil)
+
+        // Wait for async reverse geocoding task
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        // Should NOT show "551 Fairlawn Ave" because Fairlawn Ave doesn't match Queen St W
+        #expect(vm.cardAddress != "551 Fairlawn Ave")
+        #expect(vm.cardAddress == "Queen Street West" || vm.cardAddress?.contains("Queen") == true)
+        #expect(vm.activeSelectionCoordinate != nil)
+    }
+
     @Test("zoom threshold changes coaching and never auto-selects")
     func zoomThresholdCoachingWithoutSelection() async {
         let vm = ParkingMapTestFixtures.viewModel()
@@ -298,5 +341,149 @@ struct ParkingMapViewModelTests {
         vm.handleTap(at: ParkingMapTestFixtures.queenSouth)
         #expect(vm.selection?.selected?.side != firstSide)
         #expect(vm.selectedFeatureIDs.count == 1)
+    }
+
+    @Test("map style switches between explore, driving, transit, and satellite configurations")
+    func mapStyleSwitchingAndConfigurations() {
+        let vm = ParkingMapTestFixtures.viewModel(mapStyle: .standard)
+        #expect(vm.mapStyle == .standard)
+
+        let standardConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(standardConfig != nil)
+        #expect(standardConfig?.showsTraffic == false)
+        #expect(standardConfig?.pointOfInterestFilter == .includingAll)
+
+        vm.setMapStyle(.driving)
+        #expect(vm.mapStyle == .driving)
+        let drivingConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(drivingConfig != nil)
+        #expect(drivingConfig?.showsTraffic == true)
+        #expect(drivingConfig?.pointOfInterestFilter == .includingAll)
+
+        vm.setMapStyle(.transit)
+        #expect(vm.mapStyle == .transit)
+        let transitConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
+        #expect(transitConfig != nil)
+        #expect(transitConfig?.pointOfInterestFilter != nil)
+        #expect(transitConfig?.emphasisStyle == .muted)
+
+        vm.setMapStyle(.satellite)
+        #expect(vm.mapStyle == .satellite)
+        let satelliteConfig = vm.mapStyle.makeConfiguration() as? MKHybridMapConfiguration
+        #expect(satelliteConfig != nil)
+        #expect(satelliteConfig?.elevationStyle == .realistic)
+        #expect(satelliteConfig?.pointOfInterestFilter == .includingAll)
+    }
+
+    @Test("dropped pin on different street from nearest segment shows pin address and likely allowed verdict")
+    func offStreetDroppedPinGivesLikelyAllowed() async {
+        let geocoding = MockGeocodingClient(defaultResult: "450 Richmond St W")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Drop pin near Queen street, but geocoded address is on Richmond St W (different street)
+        vm.handleLongPress(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+
+        for _ in 0..<20 {
+            if vm.cardAddress == "450 Richmond St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "450 Richmond St W")
+        #expect(vm.selectedFeatureIDs.isEmpty)
+        #expect(vm.verdict?.status == .likelyAllowed)
+        #expect(vm.verdict?.headline == "Likely allowed")
+    }
+
+    @Test("favorites store adds, toggles, removes, and is tracked in view model")
+    func favoritesManagement() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        #expect(vm.favorites.isEmpty)
+        #expect(vm.isFavorite(coordinate: ParkingMapTestFixtures.queenNorth, label: "Queen St") == false)
+
+        vm.toggleFavorite(label: "Queen St", subtitle: "Toronto, ON", coordinate: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.favorites.count == 1)
+        #expect(vm.favorites.first?.label == "Queen St")
+        #expect(vm.isFavorite(coordinate: ParkingMapTestFixtures.queenNorth, label: "Queen St") == true)
+
+        let id = vm.favorites.first!.id
+        #expect(vm.isFavorite(id: id) == true)
+
+        // Toggle again removes it
+        vm.toggleFavorite(label: "Queen St", coordinate: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.favorites.isEmpty)
+    }
+
+    @Test("location centered state tracks distance between visible region and user coordinate")
+    func locationCenteredTracking() async {
+        let location = MockLocationClient()
+        location.nextLocation = CLLocation(
+            latitude: ParkingMapTestFixtures.queenNorth.latitude,
+            longitude: ParkingMapTestFixtures.queenNorth.longitude
+        )
+        location.authorizationStatus = .authorizedWhenInUse
+        let vm = ParkingMapTestFixtures.viewModel(location: location)
+        #expect(vm.isLocationCentered == false)
+
+        await vm.start()
+        #expect(vm.isLocationCentered == true)
+        #expect(vm.userCoordinate != nil)
+
+        // Panning away uncenters the location
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedOutRegion)
+        #expect(vm.isLocationCentered == false)
+
+        // Panning back to user coordinate re-centers the location
+        await vm.handleRegionChange(MKCoordinateRegion(
+            center: ParkingMapTestFixtures.queenNorth,
+            span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.006)
+        ))
+        #expect(vm.isLocationCentered == true)
+    }
+
+    @Test("3D and 2D toggle and camera pitch handling")
+    func threeDToggleAndPitch() {
+        let vm = ParkingMapTestFixtures.viewModel()
+        #expect(vm.is3D == false)
+        #expect(vm.pendingCameraPitch == nil)
+
+        vm.toggle3D()
+        #expect(vm.is3D == true)
+        #expect(vm.pendingCameraPitch == 55)
+
+        vm.toggle3D()
+        #expect(vm.is3D == false)
+        #expect(vm.pendingCameraPitch == 0)
+
+        vm.updatePitch(45)
+        #expect(vm.is3D == true)
+
+        vm.updatePitch(10)
+        #expect(vm.is3D == false)
+    }
+
+    @Test("camera flight duration scales monotonically with distance and respects min/max bounds")
+    func cameraFlightDurationScaling() {
+        let d0 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 0)
+        let d100 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 100)
+        let d1000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 1_000)
+        let d5000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 5_000)
+        let d20000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 20_000)
+        let d100000 = ParkingMapConstants.cameraFlightDuration(distanceMeters: 100_000)
+
+        #expect(d0 == 0.4)
+        #expect(d100 > d0)
+        #expect(d1000 > d100)
+        #expect(d5000 > d1000)
+        #expect(d20000 > d5000)
+        #expect(d100000 == 2.4)
+
+        // Verify reasonable ranges
+        #expect(d100 >= 0.4 && d100 <= 1.0)
+        #expect(d1000 >= 1.0 && d1000 <= 1.6)
+        #expect(d5000 >= 1.6 && d5000 <= 2.2)
+        #expect(d20000 >= 2.0 && d20000 <= 2.4)
     }
 }

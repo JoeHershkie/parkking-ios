@@ -67,7 +67,7 @@ final class LocationClient: NSObject, LocationProviding, CLLocationManagerDelega
         self.servicesEnabled = true
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         Task.detached {
             let enabled = CLLocationManager.locationServicesEnabled()
             await MainActor.run { [weak self] in
@@ -98,6 +98,13 @@ final class LocationClient: NSObject, LocationProviding, CLLocationManagerDelega
             break
         @unknown default:
             break
+        }
+
+        if let current = manager.location,
+           current.horizontalAccuracy >= 0 && current.horizontalAccuracy <= 100,
+           current.timestamp.timeIntervalSinceNow > -30 {
+            self.lastLocation = current
+            return current
         }
 
         if let locationContinuation {

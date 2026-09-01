@@ -3,21 +3,23 @@ import SwiftUI
 
 struct ParkingMapKitView: UIViewRepresentable {
     @Bindable var viewModel: ParkingMapViewModel
+    var bottomPadding: CGFloat = 88
 
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
 
     func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView(frame: .zero)
+        let map = ParkkingMapView(frame: .zero)
         map.delegate = context.coordinator
         map.isRotateEnabled = true
         map.isPitchEnabled = true
         map.isZoomEnabled = true
         map.isScrollEnabled = true
         map.showsCompass = false
-        map.showsTraffic = false
+        map.showsTraffic = (viewModel.mapStyle == .driving)
         map.showsUserLocation = viewModel.isLocationAuthorized
+        map.selectableMapFeatures = [.pointsOfInterest]
         map.layoutMargins = UIEdgeInsets(
             top: ParkingMapConstants.chromeTopMargin,
             left: 0,
@@ -25,11 +27,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             right: 0
         )
 
-        let config = MKStandardMapConfiguration()
-        config.elevationStyle = .flat
-        config.pointOfInterestFilter = .excludingAll
-        config.showsTraffic = false
-        map.preferredConfiguration = config
+        map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
 
         map.cameraBoundary = MKMapView.CameraBoundary(
             coordinateRegion: ParkingMapConstants.parkingCoverageRegion
@@ -40,19 +38,35 @@ struct ParkingMapKitView: UIViewRepresentable {
         )
         map.setRegion(ParkingMapConstants.cityRegion, animated: false)
 
+        let scale = MKScaleView(mapView: map)
+        scale.scaleVisibility = .adaptive
+        scale.legendAlignment = .leading
+        scale.translatesAutoresizingMaskIntoConstraints = false
+        map.addSubview(scale)
+
         let compass = MKCompassButton(mapView: map)
         compass.compassVisibility = .adaptive
         compass.translatesAutoresizingMaskIntoConstraints = false
         map.addSubview(compass)
+
+        let compassBottomConstraint = compass.bottomAnchor.constraint(
+            equalTo: map.safeAreaLayoutGuide.bottomAnchor,
+            constant: -(bottomPadding + 148)
+        )
+        context.coordinator.compassBottomConstraint = compassBottomConstraint
+
         NSLayoutConstraint.activate([
-            compass.topAnchor.constraint(
+            scale.topAnchor.constraint(
                 equalTo: map.safeAreaLayoutGuide.topAnchor,
-                constant: ParkingMapConstants.chromeTopMargin
+                constant: 8
             ),
+            scale.centerXAnchor.constraint(equalTo: map.centerXAnchor),
+
             compass.trailingAnchor.constraint(
                 equalTo: map.safeAreaLayoutGuide.trailingAnchor,
-                constant: -12
+                constant: -15
             ),
+            compassBottomConstraint,
         ])
 
         let tap = UITapGestureRecognizer(
@@ -61,6 +75,14 @@ struct ParkingMapKitView: UIViewRepresentable {
         )
         tap.delegate = context.coordinator
         map.addGestureRecognizer(tap)
+
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = 0.5
+        longPress.delegate = context.coordinator
+        map.addGestureRecognizer(longPress)
 
         return map
     }
@@ -72,21 +94,72 @@ struct ParkingMapKitView: UIViewRepresentable {
             viewModel.pendingCameraRegion = nil
             map.setRegion(pending, animated: true)
         }
+        if let targetPitch = viewModel.pendingCameraPitch {
+            viewModel.pendingCameraPitch = nil
+            let currentCamera = map.camera
+            let newCamera = MKMapCamera(
+                lookingAtCenter: currentCamera.centerCoordinate,
+                fromDistance: currentCamera.centerCoordinateDistance,
+                pitch: targetPitch,
+                heading: currentCamera.heading
+            )
+            map.setCamera(newCamera, animated: true)
+        }
+        context.coordinator.updateBottomPadding(bottomPadding, on: map)
+        context.coordinator.syncMapStyle(on: map)
         context.coordinator.syncAnnotations(on: map)
         context.coordinator.syncOverlays(on: map)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var viewModel: ParkingMapViewModel
+        var compassBottomConstraint: NSLayoutConstraint?
+        private var lastMapStyle: MapViewStyle?
         private var lastRenderItems: [ParkingMapRenderItem] = []
         private var lastSelectedIDs: Set<String> = []
         private var lastSearchPinID: String?
         private var lastTapDotID: String?
         private var colorOverlays: [ParkingOverlayBucketKind: ParkingStyledOverlay] = [:]
         private var selectedOverlays: [ParkingStyledOverlay] = []
+        private var transitOverlays: [TransitLineOverlay] = []
 
         init(viewModel: ParkingMapViewModel) {
             self.viewModel = viewModel
+        }
+
+        func updateBottomPadding(_ bottomPadding: CGFloat, on map: MKMapView) {
+            let target = -(bottomPadding + 148)
+            if compassBottomConstraint?.constant != target {
+                compassBottomConstraint?.constant = target
+                UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+                    map.layoutIfNeeded()
+                }
+            }
+        }
+
+        func syncMapStyle(on map: MKMapView) {
+            if viewModel.mapStyle != lastMapStyle {
+                let previousStyle = lastMapStyle
+                lastMapStyle = viewModel.mapStyle
+                map.showsTraffic = (viewModel.mapStyle == .driving)
+                map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
+
+                if viewModel.mapStyle == .transit {
+                    if transitOverlays.isEmpty {
+                        transitOverlays = TorontoTransitNetwork.makeOverlays()
+                        for overlay in transitOverlays {
+                            map.addOverlay(overlay, level: .aboveRoads)
+                        }
+                    }
+                } else if !transitOverlays.isEmpty {
+                    map.removeOverlays(transitOverlays)
+                    transitOverlays.removeAll()
+                }
+
+                if (previousStyle == .satellite || viewModel.mapStyle == .satellite) && previousStyle != nil {
+                    syncOverlays(on: map, force: true)
+                }
+            }
         }
 
         func syncAnnotations(on map: MKMapView) {
@@ -126,11 +199,11 @@ struct ParkingMapKitView: UIViewRepresentable {
             }
         }
 
-        func syncOverlays(on map: MKMapView) {
+        func syncOverlays(on map: MKMapView, force: Bool = false) {
             let items = viewModel.renderItems
             let selectedIDs = viewModel.selectedFeatureIDs
-            let itemsChanged = items != lastRenderItems
-            let selectionChanged = selectedIDs != lastSelectedIDs
+            let itemsChanged = items != lastRenderItems || force
+            let selectionChanged = selectedIDs != lastSelectedIDs || force
 
             if !itemsChanged && !selectionChanged {
                 return
@@ -160,13 +233,14 @@ struct ParkingMapKitView: UIViewRepresentable {
         ) {
             map.removeOverlays(Array(colorOverlays.values))
             colorOverlays.removeAll(keepingCapacity: true)
+            let isSatellite = (viewModel.mapStyle == .satellite)
             for kind in ParkingOverlayBucketKind.drawOrder {
                 guard let ids = plan.colorBuckets[kind], !ids.isEmpty else { continue }
                 let groupItems = ids.compactMap { byID[$0] }
                 guard !groupItems.isEmpty else { continue }
-                let overlay = ParkingStyledOverlay(kind: kind, role: .base, items: groupItems)
+                let overlay = ParkingStyledOverlay(kind: kind, role: .base, isSatellite: isSatellite, items: groupItems)
                 colorOverlays[kind] = overlay
-                map.addOverlay(overlay, level: .aboveRoads)
+                map.addOverlay(overlay, level: .aboveLabels)
             }
         }
 
@@ -181,12 +255,14 @@ struct ParkingMapKitView: UIViewRepresentable {
             }
             guard !plan.selectedIDs.isEmpty else { return }
 
+            let isSatellite = (viewModel.mapStyle == .satellite)
+
             // 1. Add border overlays first (rendered under fill)
             for kind in ParkingOverlayBucketKind.drawOrder {
                 guard let ids = plan.selectedBuckets[kind], !ids.isEmpty else { continue }
                 let groupItems = ids.compactMap { byID[$0] }
                 guard !groupItems.isEmpty else { continue }
-                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedBorder, items: groupItems)
+                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedBorder, isSatellite: isSatellite, items: groupItems)
                 selectedOverlays.append(overlay)
                 map.addOverlay(overlay, level: .aboveLabels)
             }
@@ -196,7 +272,7 @@ struct ParkingMapKitView: UIViewRepresentable {
                 guard let ids = plan.selectedBuckets[kind], !ids.isEmpty else { continue }
                 let groupItems = ids.compactMap { byID[$0] }
                 guard !groupItems.isEmpty else { continue }
-                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedFill, items: groupItems)
+                let overlay = ParkingStyledOverlay(kind: kind, role: .selectedFill, isSatellite: isSatellite, items: groupItems)
                 selectedOverlays.append(overlay)
                 map.addOverlay(overlay, level: .aboveLabels)
             }
@@ -242,6 +318,15 @@ struct ParkingMapKitView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let transit = overlay as? TransitLineOverlay {
+                let renderer = MKMultiPolylineRenderer(multiPolyline: transit)
+                renderer.strokeColor = transit.strokeColor
+                renderer.lineWidth = transit.lineWidth
+                renderer.lineCap = .round
+                renderer.lineJoin = .round
+                return renderer
+            }
+
             guard let styled = overlay as? ParkingStyledOverlay else {
                 return MKOverlayRenderer(overlay: overlay)
             }
@@ -258,9 +343,29 @@ struct ParkingMapKitView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let region = mapView.region
+            let pitch = mapView.camera.pitch
             Task { @MainActor in
+                viewModel.updatePitch(pitch)
                 await viewModel.handleRegionChange(region)
             }
+        }
+
+        func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+            if let mapFeature = annotation as? MKMapFeatureAnnotation {
+                let title = mapFeature.title ?? "Point of Interest"
+                let coordinate = mapFeature.coordinate
+                viewModel.selectSearchResult(
+                    title: title,
+                    subtitle: mapFeature.subtitle ?? nil,
+                    coordinate: coordinate,
+                    source: .tap
+                )
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            guard let loc = userLocation.location else { return }
+            viewModel.updateUserCoordinate(loc.coordinate)
         }
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -268,6 +373,15 @@ struct ParkingMapKitView: UIViewRepresentable {
             let point = gesture.location(in: map)
             let coordinate = map.convert(point, toCoordinateFrom: map)
             viewModel.handleTap(at: coordinate)
+        }
+
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let map = gesture.view as? MKMapView else { return }
+            let point = gesture.location(in: map)
+            let coordinate = map.convert(point, toCoordinateFrom: map)
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.impactOccurred()
+            viewModel.handleLongPress(at: coordinate)
         }
 
         func gestureRecognizer(
@@ -289,7 +403,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
-            false
+            true
         }
     }
 }
@@ -326,4 +440,23 @@ final class TapDotAnnotationView: MKAnnotationView {
         dotView.backgroundColor = dotAnnotation.color
     }
 }
+
+final class ParkkingMapView: MKMapView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        repositionAttributionAndLogo()
+    }
+
+    private func repositionAttributionAndLogo() {
+        for subview in subviews {
+            let className = NSStringFromClass(type(of: subview))
+            if className.contains("AppleLogo") || (subview is UIImageView && subview.bounds.width < 100 && subview.bounds.height < 40 && subview.frame.origin.y > bounds.height - 250) {
+                let x = (bounds.width - subview.bounds.width) / 2
+                let y = bounds.height - subview.bounds.height - max(safeAreaInsets.bottom, 4)
+                subview.frame = CGRect(x: x, y: y, width: subview.bounds.width, height: subview.bounds.height)
+            }
+        }
+    }
+}
+
 

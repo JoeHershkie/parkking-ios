@@ -108,24 +108,26 @@ struct TimeMenuButton: View {
     }
 
     private func verdictChipLabel(_ intervalLabel: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: "clock")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             Text(intervalLabel)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.primary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
             Image(systemName: "chevron.up.chevron.down")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(Color(uiColor: .tertiarySystemFill), in: Capsule(style: .continuous))
         .accessibilityLabel("Interval: \(intervalLabel)")
         .accessibilityHint("Tap to change duration or time")

@@ -105,6 +105,39 @@ struct ParkingOverlayStylingTests {
         #expect(selectedBorderOverlay.strokeColor == ParkingOverlayStyling.selectedBorderColor)
     }
 
+    @Test("selected dashed segment overlay has matching thickness, full opacity, and butt lineCap")
+    func selectedDashedSegmentStyling() {
+        let sampleItem = item(id: "1", polarity: .permitted, severity: 0, uncertain: true)
+        let baseOverlay = ParkingStyledOverlay(kind: .allowedUncertain, role: .base, items: [sampleItem])
+        let selectedBorderOverlay = ParkingStyledOverlay(kind: .allowedUncertain, role: .selectedBorder, items: [sampleItem])
+        let selectedFillOverlay = ParkingStyledOverlay(kind: .allowedUncertain, role: .selectedFill, items: [sampleItem])
+
+        // Base is thin (3pt), but selected is full thickness (8pt fill / 11pt border)
+        #expect(baseOverlay.lineWidth == 3)
+        #expect(selectedFillOverlay.lineWidth == 8)
+        #expect(selectedBorderOverlay.lineWidth == 11)
+
+        // Selected lineCap is .butt so dashes don't bleed into gaps
+        #expect(selectedFillOverlay.lineCap == .butt)
+        #expect(selectedBorderOverlay.lineCap == .butt)
+
+        // Selected colors are fully opaque
+        #expect(selectedFillOverlay.strokeColor == ParkingOverlayBucketKind.allowedUncertain.strokeColor)
+        #expect(selectedBorderOverlay.strokeColor == ParkingOverlayStyling.selectedBorderColor)
+    }
+
+    @Test("satellite line width calibration scales down base and selected lines for 3D terrain rendering")
+    func satelliteLineWidthCalibration() {
+        #expect(ParkingOverlayBucketKind.allowed.lineWidth(isSatellite: true) == 3.5)
+        #expect(ParkingOverlayBucketKind.allowedUncertain.lineWidth(isSatellite: true) == 2.5)
+        #expect(ParkingOverlayStyling.selectedLineWidth(isSatellite: true) == 5.5)
+        #expect(ParkingOverlayStyling.selectedBorderWidth(isSatellite: true) == 8.0)
+
+        let sampleItem = item(id: "1", polarity: .permitted, severity: 0)
+        let satelliteOverlay = ParkingStyledOverlay(kind: .allowed, role: .base, isSatellite: true, items: [sampleItem])
+        #expect(satelliteOverlay.lineWidth == 3.5)
+    }
+
     private func item(
         id: String,
         partIndex: Int = 0,
