@@ -62,7 +62,7 @@ enum ParkingMapConstants {
     nonisolated static let minCameraDistance: CLLocationDistance = 200
     nonisolated static let maxCameraDistance: CLLocationDistance = 80_000
     nonisolated static let chromeTopMargin: CGFloat = 88
-    nonisolated static let chromeBottomMargin: CGFloat = 0
+    nonisolated static let chromeBottomMargin: CGFloat = 110
 
     /// Approximate MapLibre zoom 14.5 gate as max visible map width.
     nonisolated static let curbVisibleMaxWidthMeters: CLLocationDistance = 1_200

@@ -39,29 +39,25 @@ enum MapViewStyle: String, CaseIterable, Identifiable, Sendable, Codable {
         switch self {
         case .standard:
             let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            config.pointOfInterestFilter = .excludingAll
+            config.pointOfInterestFilter = .includingAll
             config.showsTraffic = false
             return config
 
         case .driving:
             let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            config.pointOfInterestFilter = .excludingAll
+            config.pointOfInterestFilter = .includingAll
             config.showsTraffic = true
             return config
 
         case .transit:
-            let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            config.pointOfInterestFilter = MKPointOfInterestFilter(including: [
-                .publicTransport,
-                .airport,
-                .evCharger,
-            ])
+            let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
+            config.pointOfInterestFilter = .includingAll
             config.showsTraffic = false
             return config
 
         case .satellite:
             let config = MKHybridMapConfiguration(elevationStyle: .realistic)
-            config.pointOfInterestFilter = .excludingAll
+            config.pointOfInterestFilter = .includingAll
             config.showsTraffic = false
             return config
         }
