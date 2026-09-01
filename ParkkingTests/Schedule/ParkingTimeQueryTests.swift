@@ -128,7 +128,7 @@ struct ParkingTimeQueryTests {
             from: DateComponents(year: 2026, month: 8, day: 31, hour: 17, minute: 28)
         )!
 
-        // Today from 5:28pm - 6:28pm
+        // Today (5:28pm - 6:28pm - no 'Today from')
         let todaySlot = Slot(dayOfWeek: 1, minuteOfDay: 17 * 60 + 28, month: 8, dayOfMonth: 31, year: 2026)
         let todayLabel = ParkingTimeQuery.formatSlotLabel(
             todaySlot,
@@ -136,7 +136,7 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(todayLabel == "Today from 5:28pm - 6:28pm")
+        #expect(todayLabel == "5:28pm - 6:28pm")
 
         // Tomorrow (Tue Sep 1, 2026 - within 7 days)
         let tomorrowSlot = Slot(dayOfWeek: 2, minuteOfDay: 17 * 60 + 28, month: 9, dayOfMonth: 1, year: 2026)
@@ -146,7 +146,7 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(tomorrowLabel == "Tue from 5:28pm - 6:28pm")
+        #expect(tomorrowLabel == "Tue, 5:28pm - 6:28pm")
 
         // 6 days ahead (Sun Sep 6, 2026 - within 7 days)
         let sunSlot = Slot(dayOfWeek: 0, minuteOfDay: 17 * 60 + 28, month: 9, dayOfMonth: 6, year: 2026)
@@ -156,7 +156,7 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(sunLabel == "Sun from 5:28pm - 6:28pm")
+        #expect(sunLabel == "Sun, 5:28pm - 6:28pm")
 
         // Later in current year (Mon Sep 14, 2026 - not within 7 days)
         let laterSlot = Slot(dayOfWeek: 1, minuteOfDay: 17 * 60 + 28, month: 9, dayOfMonth: 14, year: 2026)
@@ -166,7 +166,7 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(laterLabel == "Mon 09-14 from 5:28pm - 6:28pm")
+        #expect(laterLabel == "Mon 09-14, 5:28pm - 6:28pm")
 
         // Next year (Tue Aug 31, 2027)
         let nextYearSlot = Slot(dayOfWeek: 2, minuteOfDay: 17 * 60 + 28, month: 8, dayOfMonth: 31, year: 2027)
@@ -176,7 +176,7 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(nextYearLabel == "Tue 2027-08-31 from 5:28pm - 6:28pm")
+        #expect(nextYearLabel == "Tue 2027-08-31, 5:28pm - 6:28pm")
 
         // Point check (no end time)
         let pointLabel = ParkingTimeQuery.formatSlotLabel(
@@ -185,6 +185,6 @@ struct ParkingTimeQueryTests {
             now: now,
             timeZone: toronto
         )
-        #expect(pointLabel == "Today from 5:28pm")
+        #expect(pointLabel == "5:28pm")
     }
 }
