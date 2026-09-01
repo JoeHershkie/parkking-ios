@@ -111,7 +111,7 @@ final class ParkingMapViewModel {
         self.dataStore = dataStore
         self.locationClient = locationClient ?? LocationClient()
         self.recentsStore = recentsStore ?? RecentsStore()
-        self.geocodingClient = geocodingClient ?? CLGeocodingClient()
+        self.geocodingClient = geocodingClient ?? MapKitGeocodingClient()
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }

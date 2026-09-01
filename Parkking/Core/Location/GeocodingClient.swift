@@ -1,38 +1,39 @@
 import CoreLocation
 import Foundation
+import MapKit
 
 protocol GeocodingProviding: Sendable {
     func reverseGeocode(coordinate: CLLocationCoordinate2D) async -> String?
 }
 
-final class CLGeocodingClient: GeocodingProviding {
-    private let geocoder = CLGeocoder()
-
+final class MapKitGeocodingClient: GeocodingProviding {
     func reverseGeocode(coordinate: CLLocationCoordinate2D) async -> String? {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let request = MKReverseGeocodingRequest(location: location) else { return nil }
         do {
-            let placemarks = try await geocoder.reverseGeocodeLocation(location)
-            guard let placemark = placemarks.first else { return nil }
-            return Self.formatPlacemark(placemark)
+            let mapItems = try await request.mapItems
+            guard let mapItem = mapItems.first else { return nil }
+            return Self.formatMapItem(mapItem)
         } catch {
             return nil
         }
     }
 
-    nonisolated static func formatPlacemark(_ placemark: CLPlacemark) -> String? {
-        if let subThoroughfare = placemark.subThoroughfare,
-           let thoroughfare = placemark.thoroughfare {
-            return "\(subThoroughfare) \(thoroughfare)"
+    nonisolated static func formatMapItem(_ mapItem: MKMapItem) -> String? {
+        if let shortAddress = mapItem.address?.shortAddress, !shortAddress.isEmpty {
+            return shortAddress
         }
-        if let thoroughfare = placemark.thoroughfare {
-            return thoroughfare
-        }
-        if let name = placemark.name, !name.isEmpty {
+        if let name = mapItem.name, !name.isEmpty {
             return name
+        }
+        if let fullAddress = mapItem.address?.fullAddress, !fullAddress.isEmpty {
+            return fullAddress
         }
         return nil
     }
 }
+
+typealias CLGeocodingClient = MapKitGeocodingClient
 
 final class MockGeocodingClient: GeocodingProviding, @unchecked Sendable {
     var resultForCoordinate: [String: String] = [:]
@@ -45,17 +46,17 @@ final class MockGeocodingClient: GeocodingProviding, @unchecked Sendable {
     }
 
     func setMock(coordinate: CLLocationCoordinate2D, address: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        let key = String(format: "%.5f,%.5f", coordinate.latitude, coordinate.longitude)
-        resultForCoordinate[key] = address
+        lock.withLock {
+            let key = String(format: "%.5f,%.5f", coordinate.latitude, coordinate.longitude)
+            resultForCoordinate[key] = address
+        }
     }
 
     func reverseGeocode(coordinate: CLLocationCoordinate2D) async -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        reverseGeocodeCallCount += 1
-        let key = String(format: "%.5f,%.5f", coordinate.latitude, coordinate.longitude)
-        return resultForCoordinate[key] ?? defaultResult
+        lock.withLock {
+            reverseGeocodeCallCount += 1
+            let key = String(format: "%.5f,%.5f", coordinate.latitude, coordinate.longitude)
+            return resultForCoordinate[key] ?? defaultResult
+        }
     }
 }
