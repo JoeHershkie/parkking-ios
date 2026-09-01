@@ -372,8 +372,19 @@ final class ParkingMapViewModel {
             BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
             padDeg: padDeg
         )
+        let enrichedSubset: [ParkingFeature]
+        if let resolved = resolvedQuery {
+            enrichedSubset = ParkingSpatialIndex.enrichFeaturesSubset(
+                subset,
+                slot: resolved.slot,
+                includeUnknown: true,
+                endMinuteOfDay: resolved.effectiveEndMinute
+            ).features
+        } else {
+            enrichedSubset = subset
+        }
         let result = CurbSelection.selectNearestCurb(
-            features: subset,
+            features: enrichedSubset,
             point: point,
             maxDistanceMeters: searchDistance,
             preferredGroupKey: nil
@@ -644,32 +655,7 @@ final class ParkingMapViewModel {
                 includeUnknown: true,
                 endMinuteOfDay: resolved.effectiveEndMinute
             )
-            var renders: [ParkingMapRenderItem] = []
-            for feature in enriched.features {
-                let polarity = feature.properties.polarity ?? .unknown
-                let severity = feature.properties.severity
-                    ?? ParkingSpatialIndex.severityOrder(
-                        polarity: polarity,
-                        unparsed: feature.properties.unparsed
-                    )
-                let uncertain = feature.properties.hasUncertainCurbPlacement
-                for (partIndex, coords) in feature.coordinateParts.enumerated() {
-                    guard coords.count >= 2 else { continue }
-                    renders.append(
-                        ParkingMapRenderItem(
-                            featureID: feature.id,
-                            partIndex: partIndex,
-                            coordinates: coords,
-                            severity: severity,
-                            polarity: polarity,
-                            isSelected: false,
-                            isUncertainPlacement: uncertain
-                        )
-                    )
-                }
-            }
-            renders.sort { $0.severity < $1.severity }
-            return renders
+            return CurbOverlapResolver.resolveViewportOverlaps(features: enriched.features)
         }.value
 
         guard generation == viewportGeneration else { return }

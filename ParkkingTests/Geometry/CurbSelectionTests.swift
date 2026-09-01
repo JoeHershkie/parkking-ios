@@ -263,4 +263,41 @@ struct CurbSelectionTests {
                 < CurbSelection.localClusterMeters
         )
     }
+
+    @Test("Tapping overlapping curb prioritizes winning rule for highlightFeatureIDs")
+    func tappingOverlappingCurbPrioritizesWinningRuleForHighlight() {
+        let longPermitted = ParkingFeature(
+            id: FeatureID("permit_29132"),
+            geometry: .lineString(coordinates: [[-79.4000, 43.6500], [-79.4010, 43.6500]]),
+            properties: ParkingProperties(
+                highway: "Tippett Rd",
+                rule: "2 hr",
+                scheduleCategory: "restricted_periods",
+                side: "East",
+                sourceID: "29132",
+                polarity: .permitted,
+                severity: 0
+            )
+        )
+        let shortNoStanding = ParkingFeature(
+            id: FeatureID("standing_30344"),
+            geometry: .lineString(coordinates: [[-79.4003, 43.6500], [-79.4007, 43.6500]]),
+            properties: ParkingProperties(
+                highway: "Tippett Rd",
+                rule: "No standing",
+                scheduleCategory: "no_standing",
+                side: "East",
+                sourceID: "30344",
+                polarity: .restricted,
+                severity: 2
+            )
+        )
+
+        let result = CurbSelection.selectNearestCurb(
+            features: [longPermitted, shortNoStanding],
+            point: LngLat(lng: -79.4005, lat: 43.65001)
+        )
+
+        #expect(result.selected?.highlightFeatureIDs == [FeatureID("standing_30344")])
+    }
 }

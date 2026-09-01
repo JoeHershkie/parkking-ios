@@ -71,10 +71,12 @@ enum CurbGeometry {
     }
 
     nonisolated static func partMidpoint(_ coordinates: [[Double]]) -> LngLat? {
-        guard !coordinates.isEmpty else { return nil }
-        let mid = coordinates[coordinates.count / 2]
-        guard mid.count >= 2 else { return nil }
-        return LngLat(lng: mid[0], lat: mid[1])
+        guard coordinates.count >= 2 else {
+            guard let first = coordinates.first, first.count >= 2 else { return nil }
+            return LngLat(lng: first[0], lat: first[1])
+        }
+        let totalLen = polylineLengthMeters(coordinates)
+        return pointAtDistanceMeters(coordinates: coordinates, distanceMeters: totalLen / 2)
     }
 
     nonisolated static func geometryMidpoint(_ geometry: ParkingGeometry) -> LngLat? {
@@ -250,5 +252,256 @@ enum CurbGeometry {
         feature: ParkingFeature
     ) -> Double {
         nearestPointOnFeatureMeters(point: point, feature: feature)?.distanceMeters ?? .infinity
+    }
+
+    nonisolated static func polylineLengthMeters(_ coordinates: [[Double]]) -> Double {
+        guard coordinates.count >= 2 else { return 0 }
+        var total = 0.0
+        for i in 0..<(coordinates.count - 1) {
+            guard coordinates[i].count >= 2, coordinates[i + 1].count >= 2 else { continue }
+            let p1 = LngLat(lng: coordinates[i][0], lat: coordinates[i][1])
+            let p2 = LngLat(lng: coordinates[i + 1][0], lat: coordinates[i + 1][1])
+            total += haversineMeters(p1, p2)
+        }
+        return total
+    }
+
+    nonisolated static func cumulativeLengthsMeters(_ coordinates: [[Double]]) -> [Double] {
+        guard !coordinates.isEmpty else { return [] }
+        var lengths = [0.0]
+        lengths.reserveCapacity(coordinates.count)
+        var total = 0.0
+        for i in 0..<(coordinates.count - 1) {
+            guard coordinates[i].count >= 2, coordinates[i + 1].count >= 2 else {
+                lengths.append(total)
+                continue
+            }
+            let p1 = LngLat(lng: coordinates[i][0], lat: coordinates[i][1])
+            let p2 = LngLat(lng: coordinates[i + 1][0], lat: coordinates[i + 1][1])
+            total += haversineMeters(p1, p2)
+            lengths.append(total)
+        }
+        return lengths
+    }
+
+    nonisolated static func projectPointToSegmentMeters(
+        point: LngLat,
+        a: (Double, Double),
+        b: (Double, Double)
+    ) -> (point: LngLat, lateralDistanceMeters: Double, t: Double, segmentLengthMeters: Double) {
+        let originLat = point.lat
+        let p = project(lng: point.lng, lat: point.lat, originLat: originLat)
+        let pa = project(lng: a.0, lat: a.1, originLat: originLat)
+        let pb = project(lng: b.0, lat: b.1, originLat: originLat)
+        let dx = pb.x - pa.x
+        let dy = pb.y - pa.y
+        let lenSq = dx * dx + dy * dy
+        let segLen = sqrt(lenSq)
+        if lenSq == 0 {
+            let dist = hypot(p.x - pa.x, p.y - pa.y)
+            return (LngLat(lng: a.0, lat: a.1), dist, 0.0, 0.0)
+        }
+        var t = ((p.x - pa.x) * dx + (p.y - pa.y) * dy) / lenSq
+        t = max(0, min(1, t))
+        let cx = pa.x + t * dx
+        let cy = pa.y + t * dy
+        let dist = hypot(p.x - cx, p.y - cy)
+        let m = metersPerDegree(lat: originLat)
+        let unprojected = LngLat(lng: cx / m.mx, lat: cy / m.my)
+        return (unprojected, dist, t, segLen)
+    }
+
+    nonisolated static func distancePointToLineStringDetailed(
+        point: LngLat,
+        coordinates: [[Double]]
+    ) -> (distanceMeters: Double, projectionPoint: LngLat, distanceAlongMeters: Double, fraction: Double)? {
+        guard coordinates.count >= 2 else { return nil }
+        let cumulative = cumulativeLengthsMeters(coordinates)
+        let totalLength = cumulative.last ?? 0
+        guard totalLength > 0 else { return nil }
+
+        var minDist = Double.infinity
+        var bestProj: LngLat?
+        var bestDistAlong: Double = 0
+
+        for i in 0..<(coordinates.count - 1) {
+            guard coordinates[i].count >= 2, coordinates[i + 1].count >= 2 else { continue }
+            let res = projectPointToSegmentMeters(
+                point: point,
+                a: (coordinates[i][0], coordinates[i][1]),
+                b: (coordinates[i + 1][0], coordinates[i + 1][1])
+            )
+            if res.lateralDistanceMeters < minDist {
+                minDist = res.lateralDistanceMeters
+                bestProj = res.point
+                let startSeg = cumulative[i]
+                let segLen = cumulative[i + 1] - startSeg
+                bestDistAlong = startSeg + res.t * segLen
+            }
+        }
+
+        guard let bestProj else { return nil }
+        let fraction = max(0.0, min(1.0, bestDistAlong / totalLength))
+        return (minDist, bestProj, bestDistAlong, fraction)
+    }
+
+    nonisolated static func pointAtDistanceMeters(
+        coordinates: [[Double]],
+        distanceMeters: Double,
+        cumulative: [Double]? = nil
+    ) -> LngLat? {
+        guard coordinates.count >= 2 else { return nil }
+        let cum = cumulative ?? cumulativeLengthsMeters(coordinates)
+        let totalLen = cum.last ?? 0
+        if distanceMeters <= 0 {
+            return LngLat(lng: coordinates[0][0], lat: coordinates[0][1])
+        }
+        if distanceMeters >= totalLen {
+            let last = coordinates[coordinates.count - 1]
+            return LngLat(lng: last[0], lat: last[1])
+        }
+
+        for i in 0..<(coordinates.count - 1) {
+            let s0 = cum[i]
+            let s1 = cum[i + 1]
+            if distanceMeters >= s0 && distanceMeters <= s1 {
+                let segLen = s1 - s0
+                let t = segLen > 0 ? (distanceMeters - s0) / segLen : 0
+                let c0 = coordinates[i]
+                let c1 = coordinates[i + 1]
+                let lng = c0[0] + t * (c1[0] - c0[0])
+                let lat = c0[1] + t * (c1[1] - c0[1])
+                return LngLat(lng: lng, lat: lat)
+            }
+        }
+        let last = coordinates[coordinates.count - 1]
+        return LngLat(lng: last[0], lat: last[1])
+    }
+
+    nonisolated static func extractSubPolyline(
+        coordinates: [[Double]],
+        startMeters: Double,
+        endMeters: Double,
+        cumulative: [Double]? = nil
+    ) -> [[Double]] {
+        guard coordinates.count >= 2 else { return [] }
+        let cum = cumulative ?? cumulativeLengthsMeters(coordinates)
+        let totalLength = cum.last ?? 0
+        let s = max(0.0, min(totalLength, startMeters))
+        let e = max(0.0, min(totalLength, endMeters))
+        guard e > s else { return [] }
+
+        guard let startPt = pointAtDistanceMeters(coordinates: coordinates, distanceMeters: s, cumulative: cum),
+              let endPt = pointAtDistanceMeters(coordinates: coordinates, distanceMeters: e, cumulative: cum) else {
+            return []
+        }
+
+        var result: [[Double]] = [[startPt.lng, startPt.lat]]
+        for i in 1..<(coordinates.count - 1) {
+            let d = cum[i]
+            if d > (s + 0.05) && d < (e - 0.05) {
+                result.append([coordinates[i][0], coordinates[i][1]])
+            }
+        }
+        result.append([endPt.lng, endPt.lat])
+        return result
+    }
+
+    nonisolated static func subtractIntervals(
+        coordinates: [[Double]],
+        blockedRanges: [(start: Double, end: Double)],
+        minLengthMeters: Double = 1.5
+    ) -> [[[Double]]] {
+        guard coordinates.count >= 2 else { return [] }
+        let cum = cumulativeLengthsMeters(coordinates)
+        let totalLength = cum.last ?? 0
+        guard totalLength >= minLengthMeters else { return [] }
+
+        if blockedRanges.isEmpty {
+            return [coordinates]
+        }
+
+        // 1. Normalize & clamp blocked ranges
+        var clamped: [(start: Double, end: Double)] = []
+        for range in blockedRanges {
+            let s = max(0.0, min(totalLength, min(range.start, range.end)))
+            let e = max(0.0, min(totalLength, max(range.start, range.end)))
+            if e > s {
+                clamped.append((s, e))
+            }
+        }
+
+        guard !clamped.isEmpty else { return [coordinates] }
+
+        // 2. Merge overlapping blocked ranges
+        clamped.sort { $0.start < $1.start }
+        var merged: [(start: Double, end: Double)] = [clamped[0]]
+        for i in 1..<clamped.count {
+            let cur = clamped[i]
+            let lastIdx = merged.count - 1
+            if cur.start <= (merged[lastIdx].end + 0.1) {
+                merged[lastIdx].end = max(merged[lastIdx].end, cur.end)
+            } else {
+                merged.append(cur)
+            }
+        }
+
+        // 3. Invert to get free intervals
+        var freeIntervals: [(start: Double, end: Double)] = []
+        var curPos = 0.0
+        for block in merged {
+            if block.start > (curPos + minLengthMeters) {
+                freeIntervals.append((curPos, block.start))
+            }
+            curPos = max(curPos, block.end)
+        }
+        if totalLength > (curPos + minLengthMeters) {
+            freeIntervals.append((curPos, totalLength))
+        }
+
+        // 4. Extract sub-polylines for free intervals
+        var subPolylines: [[[Double]]] = []
+        for interval in freeIntervals {
+            let sub = extractSubPolyline(
+                coordinates: coordinates,
+                startMeters: interval.start,
+                endMeters: interval.end,
+                cumulative: cum
+            )
+            if sub.count >= 2 && polylineLengthMeters(sub) >= minLengthMeters {
+                subPolylines.append(sub)
+            }
+        }
+
+        return subPolylines
+    }
+
+    nonisolated static func geometriesOverlapMeters(
+        _ a: ParkingGeometry,
+        _ b: ParkingGeometry,
+        toleranceMeters: Double = 4.0,
+        minOverlapLengthMeters: Double = 2.0
+    ) -> Bool {
+        let partsA = lineParts(a)
+        let partsB = lineParts(b)
+        for partA in partsA {
+            guard partA.count >= 2 else { continue }
+            let lenA = polylineLengthMeters(partA)
+            guard lenA >= minOverlapLengthMeters else { continue }
+            for partB in partsB {
+                guard partB.count >= 2 else { continue }
+                if let range = CurbOverlapResolver.findOverlapRange(
+                    targetCoords: partA,
+                    targetLength: lenA,
+                    otherCoords: partB,
+                    toleranceMeters: toleranceMeters
+                ) {
+                    if (range.end - range.start) >= minOverlapLengthMeters {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 }

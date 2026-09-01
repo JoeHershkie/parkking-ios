@@ -64,13 +64,17 @@ nonisolated struct CurbSideGroup: Sendable, Equatable, Identifiable {
     }
 
     /// Rules for the highlighted segment only. Adjacent clustered segments stay out of the card.
-    /// Same-geometry stacked signs still compose together.
+    /// Same-geometry and spatially overlapping bylaw rules compose together.
     nonisolated var verdictFeatures: [ParkingFeature] {
         let ids = Set(highlightFeatureIDs)
         guard let primary = features.first(where: { ids.contains($0.id) }) ?? features.first else {
             return []
         }
-        return features.filter { ids.contains($0.id) || $0.geometry == primary.geometry }
+        return features.filter { f in
+            ids.contains(f.id)
+                || f.geometry == primary.geometry
+                || CurbGeometry.geometriesOverlapMeters(f.geometry, primary.geometry)
+        }
     }
 }
 
@@ -126,7 +130,16 @@ nonisolated enum CurbSelection {
                 )
             )
         }
-        scored.sort { $0.distanceMeters < $1.distanceMeters }
+        scored.sort { a, b in
+            if abs(a.distanceMeters - b.distanceMeters) <= 4.0 {
+                let pa = CurbOverlapResolver.precedenceScore(feature: a.feature)
+                let pb = CurbOverlapResolver.precedenceScore(feature: b.feature)
+                if pa != pb {
+                    return pa > pb
+                }
+            }
+            return a.distanceMeters < b.distanceMeters
+        }
         return Array(scored.prefix(maxCandidates))
     }
 
@@ -143,7 +156,16 @@ nonisolated enum CurbSelection {
 
         var groups: [CurbSideGroup] = []
         for (_, members) in byGroup {
-            let sorted = members.sorted { $0.distanceMeters < $1.distanceMeters }
+            let sorted = members.sorted { a, b in
+                if abs(a.distanceMeters - b.distanceMeters) <= 4.0 {
+                    let pa = CurbOverlapResolver.precedenceScore(feature: a.feature)
+                    let pb = CurbOverlapResolver.precedenceScore(feature: b.feature)
+                    if pa != pb {
+                        return pa > pb
+                    }
+                }
+                return a.distanceMeters < b.distanceMeters
+            }
             guard let nearest = sorted.first else { continue }
             let clustered = sorted.filter {
                 featureLocalTo($0.feature, nearest.feature, maxMeters: localClusterMeters)
