@@ -110,9 +110,17 @@ enum ParkingMapTestFixtures {
         return RecentsStore(defaults: defaults, key: suite)
     }
 
+    static func favoritesStore() -> FavoritesStore {
+        let suite = "ParkkingTests.Favorites.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return FavoritesStore(defaults: defaults, key: suite)
+    }
+
     static func viewModel(
         location: MockLocationClient? = nil,
         recents: RecentsStore? = nil,
+        favorites: FavoritesStore? = nil,
         geocoding: MockGeocodingClient? = nil,
         dataset: ParkingDataset? = nil,
         now: @escaping () -> Date = Date.init,
@@ -121,6 +129,7 @@ enum ParkingMapTestFixtures {
         ParkingMapViewModel(
             locationClient: location ?? MockLocationClient(),
             recentsStore: recents ?? recentsStore(),
+            favoritesStore: favorites ?? favoritesStore(),
             geocodingClient: geocoding ?? MockGeocodingClient(),
             now: now,
             dataset: dataset ?? queenStreetDataset(),

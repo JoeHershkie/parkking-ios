@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VerdictSheet: View {
-    static let compactDetent = PresentationDetent.height(180)
+    static let compactDetent = PresentationDetent.height(216)
 
     @Bindable var viewModel: ParkingMapViewModel
     @Binding var detent: PresentationDetent
@@ -10,11 +10,19 @@ struct VerdictSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                Capsule()
+                    .fill(Color(uiColor: .tertiaryLabel))
+                    .frame(width: 54, height: 5)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 2)
+                    .padding(.bottom, 2)
+
                 if let verdict = viewModel.verdict {
                     compactVerdict(verdict)
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.bottom)
         }
         .onAppear {
             if dynamicTypeSize.isAccessibilitySize, detent == VerdictSheet.compactDetent {
@@ -25,44 +33,71 @@ struct VerdictSheet: View {
 
     @ViewBuilder
     private func compactVerdict(_ verdict: CurbVerdict) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: statusSymbol(verdict.status))
-                .font(.title2)
+                .font(.system(size: 32, weight: .semibold))
                 .foregroundStyle(statusColor(verdict.status))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(AddressFormatter.cleanAddress(viewModel.cardAddress ?? verdict.street) ?? verdict.street ?? "Selected location")
                     .font(.headline)
                     .lineLimit(2)
                 Text(verdict.headline)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(statusColor(verdict.status))
-                HStack(spacing: 8) {
-                    if let label = viewModel.resolvedQuery?.label {
-                        TimeMenuButton(viewModel: viewModel, style: .verdictChip(label))
-                    }
-                    DirectionsMenuButton(
-                        coordinate: viewModel.activeSelectionCoordinate,
-                        name: viewModel.cardAddress ?? verdict.street
-                    )
-                }
             }
 
             Spacer(minLength: 0)
 
-            Button {
-                viewModel.dismissResult()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+            HStack(spacing: 8) {
+                Button {
+                    let feedback = UIImpactFeedbackGenerator(style: .medium)
+                    feedback.impactOccurred()
+                    viewModel.toggleCurrentSelectionFavorite()
+                } label: {
+                    Image(systemName: viewModel.isCurrentSelectionFavorite ? "star.fill" : "star")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(viewModel.isCurrentSelectionFavorite ? Color.yellow : Color.secondary)
+                        .frame(width: 44, height: 44)
+                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(viewModel.isCurrentSelectionFavorite ? "Remove from favorites" : "Add to favorites")
+
+                Button {
+                    viewModel.dismissResult()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
         }
+
+        GeometryReader { geo in
+            let spacing: CGFloat = 10
+            let totalWidth = geo.size.width - spacing
+            let timeWidth = totalWidth * (2.0 / 3.0)
+            let directionsWidth = totalWidth * (1.0 / 3.0)
+
+            HStack(spacing: spacing) {
+                if let label = viewModel.resolvedQuery?.label {
+                    TimeMenuButton(viewModel: viewModel, style: .verdictChip(label))
+                        .frame(width: timeWidth)
+                }
+                DirectionsMenuButton(
+                    coordinate: viewModel.activeSelectionCoordinate,
+                    name: viewModel.cardAddress ?? verdict.street
+                )
+                .frame(width: directionsWidth)
+            }
+        }
+        .frame(height: 38)
 
         let displayedRules = rulesToDisplay(verdict)
         if !displayedRules.isEmpty {

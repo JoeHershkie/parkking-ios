@@ -53,6 +53,7 @@ final class ParkingMapViewModel {
     var sheetExpanded = false
     var locationLabel = "Search or tap the map"
     var recents: [SavedLocation] = []
+    var favorites: [SavedLocation] = []
     var isLocating = false
     var locationError: LocationClientError?
     var isLocationAuthorized = false
@@ -68,6 +69,7 @@ final class ParkingMapViewModel {
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
+    private let favoritesStore: any FavoritesStoring
     private let geocodingClient: any GeocodingProviding
     private let now: () -> Date
     private let startsClock: Bool
@@ -108,6 +110,7 @@ final class ParkingMapViewModel {
         dataStore: ParkingDataStore = ParkingDataStore(),
         locationClient: (any LocationProviding)? = nil,
         recentsStore: (any RecentsStoring)? = nil,
+        favoritesStore: (any FavoritesStoring)? = nil,
         geocodingClient: (any GeocodingProviding)? = nil,
         now: @escaping () -> Date = Date.init,
         dataset: ParkingDataset? = nil,
@@ -118,12 +121,14 @@ final class ParkingMapViewModel {
         self.dataStore = dataStore
         self.locationClient = locationClient ?? LocationClient()
         self.recentsStore = recentsStore ?? RecentsStore()
+        self.favoritesStore = favoritesStore ?? FavoritesStore()
         self.geocodingClient = geocodingClient ?? MapKitGeocodingClient()
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }
         self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(now: now())
         self.recents = self.recentsStore.recents
+        self.favorites = self.favoritesStore.favorites
         self.isLocationAuthorized = self.locationClient.isAuthorized
 
         if let mapStyle {
@@ -233,6 +238,15 @@ final class ParkingMapViewModel {
 
     func handleTap(at coordinate: CLLocationCoordinate2D) {
         selectAtPoint(coordinate: coordinate, label: nil, source: .tap)
+    }
+
+    func handleLongPress(at coordinate: CLLocationCoordinate2D) {
+        selectAtPoint(
+            coordinate: coordinate,
+            label: "Dropped Pin",
+            subtitle: nil,
+            source: .search
+        )
     }
 
     func selectGroup(_ groupKey: String) {
@@ -379,6 +393,43 @@ final class ParkingMapViewModel {
 
     func clearRecents() {
         recents = recentsStore.clear()
+    }
+
+    func isFavorite(id: String) -> Bool {
+        favoritesStore.isFavorite(id: id)
+    }
+
+    func isFavorite(coordinate: CLLocationCoordinate2D, label: String) -> Bool {
+        favoritesStore.isFavorite(coordinate: coordinate, label: label)
+    }
+
+    var isCurrentSelectionFavorite: Bool {
+        guard let coord = activeSelectionCoordinate,
+              let label = cardAddress ?? selection?.selected?.street ?? searchPin?.title else {
+            return false
+        }
+        return isFavorite(coordinate: coord, label: label)
+    }
+
+    func toggleFavorite(label: String, subtitle: String? = nil, coordinate: CLLocationCoordinate2D) {
+        _ = favoritesStore.toggle(label: label, subtitle: subtitle, coordinate: coordinate)
+        favorites = favoritesStore.favorites
+    }
+
+    func toggleCurrentSelectionFavorite() {
+        guard let coord = activeSelectionCoordinate,
+              let label = cardAddress ?? selection?.selected?.street ?? searchPin?.title else {
+            return
+        }
+        toggleFavorite(label: label, subtitle: nil, coordinate: coord)
+    }
+
+    func removeFavorite(id: String) {
+        favorites = favoritesStore.remove(id: id)
+    }
+
+    func clearFavorites() {
+        favorites = favoritesStore.clear()
     }
 
     var activeSelectionCoordinate: CLLocationCoordinate2D? {
@@ -538,6 +589,7 @@ final class ParkingMapViewModel {
 
             let isCoordinateOrGeneric = label == nil
                 || label == "Current location"
+                || label == "Dropped Pin"
                 || label?.contains("°") == true
                 || (label?.split(separator: ",").count == 2 && Double(label!.split(separator: ",")[0].trimmingCharacters(in: .whitespaces)) != nil)
 
@@ -548,15 +600,24 @@ final class ParkingMapViewModel {
                     guard let self else { return }
                     if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord),
                        let cleaned = AddressFormatter.cleanAddress(rawAddress) {
-                        let finalAddress: String
-                        if let targetStreet, !AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
-                            finalAddress = targetStreet
-                        } else {
-                            finalAddress = cleaned
-                        }
                         await MainActor.run {
-                            self.cardAddress = finalAddress
-                            self.locationLabel = finalAddress
+                            self.cardAddress = cleaned
+                            self.locationLabel = cleaned
+                            if let targetStreet, !AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
+                                // Address of the dropped pin / search is on a street with no mapped bylaw segments.
+                                // Show the address of the pin, do not highlight unrelated segment, give "Likely allowed" verdict.
+                                self.selectedFeatureIDs = []
+                                self.selection = nil
+                                if let resolved = self.resolvedQuery {
+                                    self.verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
+                                        features: [],
+                                        resolved: resolved,
+                                        street: cleaned,
+                                        side: nil,
+                                        sideDisplay: nil
+                                    )
+                                }
+                            }
                         }
                     }
                 }

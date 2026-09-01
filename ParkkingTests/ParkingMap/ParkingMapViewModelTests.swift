@@ -145,6 +145,28 @@ struct ParkingMapViewModelTests {
         #expect(vm.cardAddress == "100 Queen St W")
     }
 
+    @Test("pressing and holding a location drops a search pin and presents verdict")
+    func longPressDropsPinAndPresentsVerdict() async {
+        let geocoding = MockGeocodingClient(defaultResult: "124 Queen St W")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        vm.handleLongPress(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+        #expect(vm.searchPin?.title == "Dropped Pin")
+        #expect(vm.tapDot == nil)
+        #expect(vm.selection?.selected != nil)
+        #expect(vm.verdict != nil)
+
+        for _ in 0..<20 {
+            if vm.cardAddress == "124 Queen St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "124 Queen St W")
+    }
+
     @Test("reverse geocode rejects cross-street addresses and keeps segment street")
     func sameStreetAddressValidation() async {
         let geocoding = MockGeocodingClient(defaultResult: "551 Fairlawn Ave, North York")
@@ -329,24 +351,69 @@ struct ParkingMapViewModelTests {
         let standardConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
         #expect(standardConfig != nil)
         #expect(standardConfig?.showsTraffic == false)
+        #expect(standardConfig?.pointOfInterestFilter == .includingAll)
 
         vm.setMapStyle(.driving)
         #expect(vm.mapStyle == .driving)
         let drivingConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
         #expect(drivingConfig != nil)
         #expect(drivingConfig?.showsTraffic == true)
+        #expect(drivingConfig?.pointOfInterestFilter == .includingAll)
 
         vm.setMapStyle(.transit)
         #expect(vm.mapStyle == .transit)
         let transitConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
         #expect(transitConfig != nil)
         #expect(transitConfig?.pointOfInterestFilter != nil)
+        #expect(transitConfig?.emphasisStyle == .muted)
 
         vm.setMapStyle(.satellite)
         #expect(vm.mapStyle == .satellite)
         let satelliteConfig = vm.mapStyle.makeConfiguration() as? MKHybridMapConfiguration
         #expect(satelliteConfig != nil)
         #expect(satelliteConfig?.elevationStyle == .realistic)
+        #expect(satelliteConfig?.pointOfInterestFilter == .includingAll)
+    }
+
+    @Test("dropped pin on different street from nearest segment shows pin address and likely allowed verdict")
+    func offStreetDroppedPinGivesLikelyAllowed() async {
+        let geocoding = MockGeocodingClient(defaultResult: "450 Richmond St W")
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Drop pin near Queen street, but geocoded address is on Richmond St W (different street)
+        vm.handleLongPress(at: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+
+        for _ in 0..<20 {
+            if vm.cardAddress == "450 Richmond St W" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(vm.cardAddress == "450 Richmond St W")
+        #expect(vm.selectedFeatureIDs.isEmpty)
+        #expect(vm.verdict?.status == .likelyAllowed)
+        #expect(vm.verdict?.headline == "Likely allowed")
+    }
+
+    @Test("favorites store adds, toggles, removes, and is tracked in view model")
+    func favoritesManagement() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        #expect(vm.favorites.isEmpty)
+        #expect(vm.isFavorite(coordinate: ParkingMapTestFixtures.queenNorth, label: "Queen St") == false)
+
+        vm.toggleFavorite(label: "Queen St", subtitle: "Toronto, ON", coordinate: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.favorites.count == 1)
+        #expect(vm.favorites.first?.label == "Queen St")
+        #expect(vm.isFavorite(coordinate: ParkingMapTestFixtures.queenNorth, label: "Queen St") == true)
+
+        let id = vm.favorites.first!.id
+        #expect(vm.isFavorite(id: id) == true)
+
+        // Toggle again removes it
+        vm.toggleFavorite(label: "Queen St", coordinate: ParkingMapTestFixtures.queenNorth)
+        #expect(vm.favorites.isEmpty)
     }
 
     @Test("location centered state tracks distance between visible region and user coordinate")
