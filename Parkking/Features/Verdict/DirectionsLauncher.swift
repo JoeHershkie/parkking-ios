@@ -33,8 +33,7 @@ enum NavigationApp: String, CaseIterable, Identifiable, Sendable {
 
         switch self {
         case .appleMaps:
-            let placemark = MKPlacemark(coordinate: coordinate)
-            let mapItem = MKMapItem(placemark: placemark)
+            let mapItem = MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
             mapItem.name = name ?? "Parking destination"
             mapItem.openInMaps(launchOptions: [
                 MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
@@ -101,15 +100,17 @@ struct DirectionsMenuButton: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text("Directions")
-                    .font(.caption.weight(.bold))
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.accentColor.opacity(0.15), in: Capsule())
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.accentColor.opacity(0.15), in: Capsule(style: .continuous))
             .foregroundStyle(Color.accentColor)
         }
         .accessibilityLabel("Get directions")
