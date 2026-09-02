@@ -99,11 +99,11 @@ struct VerdictSheet: View {
         }
         .frame(height: 38)
 
-        let displayedRules = rulesToDisplay(verdict)
+        let displayedRules = VerdictSheet.rulesToDisplay(verdict)
         if !displayedRules.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(displayedRules.enumerated()), id: \.offset) { _, rule in
-                    Text(formatAppliedRule(rule))
+                    Text(VerdictSheet.formatAppliedRule(rule))
                         .font(.footnote.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -134,7 +134,7 @@ struct VerdictSheet: View {
         }
     }
 
-    private func rulesToDisplay(_ verdict: CurbVerdict) -> [ContributingRule] {
+    nonisolated static func rulesToDisplay(_ verdict: CurbVerdict) -> [ContributingRule] {
         if !verdict.activeRestrictions.isEmpty {
             return dedupedRules(verdict.activeRestrictions)
         } else if !verdict.contributingRules.isEmpty {
@@ -144,7 +144,7 @@ struct VerdictSheet: View {
         }
     }
 
-    private func formatAppliedRule(_ rule: ContributingRule) -> String {
+    nonisolated static func formatAppliedRule(_ rule: ContributingRule) -> String {
         let props = rule.feature.properties
         let label = ParkingLabels.scheduleCategoryLabel(props.scheduleCategory)
         let ruleText = props.rule.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -167,12 +167,12 @@ struct VerdictSheet: View {
         }
     }
 
-    private func dedupedRules(_ rules: [ContributingRule]) -> [ContributingRule] {
+    nonisolated static func dedupedRules(_ rules: [ContributingRule]) -> [ContributingRule] {
         var seen = Set<String>()
         var out: [ContributingRule] = []
         for rule in rules {
-            let key = ParkingLabels.ruleFeatureKey(rule.feature.properties)
-            if seen.contains(key) { continue }
+            let key = formatAppliedRule(rule)
+            guard !key.isEmpty, !seen.contains(key) else { continue }
             seen.insert(key)
             out.append(rule)
         }

@@ -33,8 +33,8 @@ struct ParkingTimeQueryTests {
         #expect(ParkingTimeQuery.formatDurationLabel(60) == "1h")
     }
 
-    @Test("truncates at midnight minute 1439")
-    func midnightTruncation() {
+    @Test("resolves overnight query crossing midnight into next day")
+    func resolvesOvernightQuery() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = toronto
         let now = cal.date(
@@ -50,17 +50,21 @@ struct ParkingTimeQueryTests {
         let resolved = ParkingTimeQuery.resolveTimeQuery(query, now: now, timeZone: toronto)
 
         #expect(resolved.slot.minuteOfDay == 23 * 60)
-        #expect(resolved.truncatedAtMidnight == true)
-        #expect(resolved.effectiveEndMinute == ParkingTimeQuery.midnightMinute)
-        #expect(ParkingTimeQuery.midnightMinute == 1439)
-        #expect(
-            ParkingTimeQuery.midnightWarning
-                == "Checked through midnight only; later rules were not evaluated."
-        )
+        #expect(resolved.crossesMidnight == true)
+        #expect(resolved.nextDaySlot?.dayOfWeek == 3) // Tuesday (2) -> Wednesday (3)
+        #expect(resolved.nextDaySlot?.dayOfMonth == 21)
+        #expect(resolved.nextDayEndMinute == 120) // 2:00am
+        #expect(resolved.label == "11:00pm - 2:00am")
+        #expect(ParkingTimeQuery.formatTimeQueryChip(query: query, resolved: resolved) == "Now · 3h")
     }
 
-    @Test("point check when already at 23:59")
-    func pointCheckAtMidnightMinute() {
+    @Test("overnight query starting at 23:59")
+    func overnightStartingAtLateMinute() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = toronto
+        let now = cal.date(
+            from: DateComponents(year: 2025, month: 5, day: 20, hour: 12, minute: 0)
+        )!
         let query = TimeQuery(
             mode: .custom,
             date: "2025-05-20",
@@ -68,9 +72,11 @@ struct ParkingTimeQueryTests {
             requestedDurationMinutes: 60,
             durationPreset: .minutes(60)
         )
-        let resolved = ParkingTimeQuery.resolveTimeQuery(query, timeZone: toronto)
-        #expect(resolved.effectiveEndMinute == nil)
-        #expect(resolved.truncatedAtMidnight == true)
+        let resolved = ParkingTimeQuery.resolveTimeQuery(query, now: now, timeZone: toronto)
+        #expect(resolved.crossesMidnight == true)
+        #expect(resolved.nextDaySlot?.dayOfMonth == 21)
+        #expect(resolved.nextDayEndMinute == 59)
+        #expect(resolved.label == "11:59pm - 12:59am")
     }
 
     @Test("clamps duration, recognizes presets, and previews midnight")

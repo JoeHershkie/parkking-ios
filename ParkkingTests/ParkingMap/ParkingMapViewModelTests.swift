@@ -240,7 +240,7 @@ struct ParkingMapViewModelTests {
         #expect(vm.appliedTimeQuery.mode == .custom)
         #expect(vm.appliedTimeQuery.requestedDurationMinutes == 180)
         #expect(vm.appliedTimeQuery.date == "2025-05-20")
-        #expect(vm.resolvedQuery?.truncatedAtMidnight == true)
+        #expect(vm.resolvedQuery?.crossesMidnight == true)
     }
 
     @Test("applying preset or custom time query updates timeChip and re-evaluates active verdict")
@@ -306,7 +306,7 @@ struct ParkingMapViewModelTests {
         #expect(vm.viewportGeneration == generation)
         #expect(vm.selectedFeatureIDs.isEmpty == false)
 
-        if let other = vm.nearbyStreetRows.flatMap(\.sides).first(where: {
+        if let other = vm.selection?.groups.first(where: {
             $0.groupKey != vm.selection?.selectedGroupKey
         }) {
             vm.selectGroup(other.groupKey)

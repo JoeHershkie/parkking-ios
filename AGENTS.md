@@ -54,5 +54,5 @@ To ensure fast iteration times during agentic loops, always follow these testing
 - Geometry & Spatial indexing: `ParkkingTests/Geometry/` (`CurbSelectionTests`, `ParkingSpatialIndexTests`, `SideNormalizationTests`)
 - Map & UI ViewModels: `ParkkingTests/ParkingMap/` (`ParkingMapViewModelTests`, `ParkingOverlayStylingTests`)
 - Location client flows: `ParkkingTests/Location/` (`LocationClientFlowTests`, `MapKitSearchClientTests`, `RecentsStoreTests`)
-- Verdict display: `ParkkingTests/Verdict/` (`BylawCopyControllerTests`, `NearbyCurbSidesTests`)
+- Verdict display: `ParkkingTests/Verdict/` (`BylawCopyControllerTests`, `VerdictSheetTests`)
 

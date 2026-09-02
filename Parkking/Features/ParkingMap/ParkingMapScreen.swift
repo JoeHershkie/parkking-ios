@@ -5,13 +5,12 @@ struct ParkingMapScreen: View {
     @State private var viewModel = ParkingMapViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var searchDetent: PresentationDetent = .height(76)
-    @State private var resultDetent: PresentationDetent = VerdictSheet.compactDetent
+    @State private var sheetDetent: PresentationDetent = .height(76)
 
     private func calculateBottomInset(in containerHeight: CGFloat) -> CGFloat {
         if viewModel.isResultPresented {
-            switch resultDetent {
-            case VerdictSheet.compactDetent:
+            switch sheetDetent {
+            case VerdictSheet.compactDetent, .height(76):
                 return 228
             case .medium:
                 return containerHeight * 0.55 + 16
@@ -21,8 +20,8 @@ struct ParkingMapScreen: View {
                 return 228
             }
         } else {
-            switch searchDetent {
-            case .height(76):
+            switch sheetDetent {
+            case .height(76), VerdictSheet.compactDetent:
                 return 88
             case .medium:
                 return containerHeight * 0.55 + 16
@@ -43,49 +42,48 @@ struct ParkingMapScreen: View {
                     MapFloatingChrome(viewModel: viewModel, bottomPadding: bottomInset)
                 }
         }
-            .sheet(isPresented: .constant(true)) {
-                SearchSheet(viewModel: viewModel, detent: $searchDetent)
-                    .presentationDetents([.height(76), .medium, .large], selection: $searchDetent)
-                    .presentationDragIndicator(.hidden)
-                    .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                    .interactiveDismissDisabled()
-                    .sheet(isPresented: $viewModel.isResultPresented) {
-                        VerdictSheet(viewModel: viewModel, detent: $resultDetent)
-                            .presentationDetents([VerdictSheet.compactDetent, .medium, .large], selection: $resultDetent)
-                            .presentationDragIndicator(.hidden)
-                            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                            .interactiveDismissDisabled(false)
-                    }
-            }
-            .onAppear { viewModel.onAppear() }
-            .onDisappear { viewModel.onDisappear() }
-            .onChange(of: viewModel.isResultPresented) { wasPresented, isPresented in
-                if isPresented && !wasPresented {
-                    resultDetent = VerdictSheet.compactDetent
-                } else if !isPresented && wasPresented {
-                    viewModel.dismissResult()
+        .sheet(isPresented: .constant(true)) {
+            Group {
+                if viewModel.isResultPresented {
+                    VerdictSheet(viewModel: viewModel, detent: $sheetDetent)
+                } else {
+                    SearchSheet(viewModel: viewModel, detent: $sheetDetent)
                 }
             }
-            .onChange(of: scenePhase) { _, phase in
-                switch phase {
-                case .active:
-                    viewModel.sceneBecameActive()
-                case .inactive, .background:
-                    viewModel.sceneBecameInactive()
-                @unknown default:
-                    break
-                }
+            .presentationDetents(
+                viewModel.isResultPresented
+                    ? [VerdictSheet.compactDetent, .medium, .large]
+                    : [.height(76), .medium, .large],
+                selection: $sheetDetent
+            )
+            .presentationDragIndicator(.hidden)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .interactiveDismissDisabled()
+        }
+        .onAppear { viewModel.onAppear() }
+        .onDisappear { viewModel.onDisappear() }
+        .onChange(of: viewModel.isResultPresented) { wasPresented, isPresented in
+            if isPresented && !wasPresented {
+                sheetDetent = dynamicTypeSize.isAccessibilitySize ? .medium : VerdictSheet.compactDetent
+            } else if !isPresented && wasPresented {
+                sheetDetent = dynamicTypeSize.isAccessibilitySize ? .medium : .height(76)
             }
-            .onChange(of: dynamicTypeSize) { _, size in
-                if size.isAccessibilitySize {
-                    if searchDetent == .height(76) {
-                        searchDetent = .medium
-                    }
-                    if resultDetent == VerdictSheet.compactDetent {
-                        resultDetent = .medium
-                    }
-                }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                viewModel.sceneBecameActive()
+            case .inactive, .background:
+                viewModel.sceneBecameInactive()
+            @unknown default:
+                break
             }
+        }
+        .onChange(of: dynamicTypeSize) { _, size in
+            if size.isAccessibilitySize {
+                sheetDetent = .medium
+            }
+        }
     }
 }
 

@@ -24,6 +24,8 @@ struct SearchSheet: View {
                 contentList
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSearchFocused)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: detent)
         .onChange(of: query) { _, value in
             resolveError = nil
             searchClient.updateQuery(value)
@@ -77,11 +79,30 @@ struct SearchSheet: View {
     private var contentList: some View {
         List {
             if let message = resolveError ?? searchClient.errorMessage {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
+                if message == MapKitSearchError.outOfCoverage.localizedDescription {
+                    ContentUnavailableView {
+                        Label("Outside Toronto Coverage", systemImage: "mappin.slash")
+                    } description: {
+                        Text("Parkking covers street parking bylaws within the City of Toronto.")
+                    } actions: {
+                        Button("Recenter on Toronto") {
+                            viewModel.recenterToronto()
+                            resolveError = nil
+                            query = ""
+                            searchClient.updateQuery("")
+                            isSearchFocused = false
+                            detent = .height(76)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                     .listRowSeparator(.hidden)
-                    .accessibilityAddTraits(.isStaticText)
+                } else {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                        .listRowSeparator(.hidden)
+                        .accessibilityAddTraits(.isStaticText)
+                }
             }
 
             if searchClient.isSearching {

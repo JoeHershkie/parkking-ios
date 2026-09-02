@@ -144,6 +144,46 @@ final class ParkingSpatialIndex: @unchecked Sendable {
 
     nonisolated static func enrichFeaturesSubset(
         _ features: [ParkingFeature],
+        resolved: ResolvedTimeQuery,
+        includeUnknown: Bool
+    ) -> ParkingFeatureCollection {
+        var enriched: [ParkingFeature] = []
+        enriched.reserveCapacity(features.count)
+
+        for feature in features {
+            let evaluation = ScheduleEvaluator.evaluateQuery(
+                props: feature.properties,
+                query: resolved,
+                includeUnknown: includeUnknown
+            )
+            guard evaluation.visible else { continue }
+            var props = feature.properties
+            let featureKey = ParkingLabels.ruleFeatureKey(props)
+            props.polarity = evaluation.polarity
+            props.visible = evaluation.visible
+            props.unparsed = evaluation.unparsed
+            props.partial = evaluation.partial
+            props.failed = evaluation.failed
+            props.featureKey = featureKey
+            props.severity = severityOrder(
+                polarity: evaluation.polarity,
+                unparsed: evaluation.unparsed
+            )
+            enriched.append(
+                ParkingFeature(
+                    id: feature.id,
+                    geometry: feature.geometry,
+                    properties: props,
+                    coordinateParts: feature.coordinateParts
+                )
+            )
+        }
+
+        return ParkingFeatureCollection(features: sortFeaturesBySeverity(enriched))
+    }
+
+    nonisolated static func enrichFeaturesSubset(
+        _ features: [ParkingFeature],
         slot: Slot,
         includeUnknown: Bool,
         endMinuteOfDay: Int? = nil

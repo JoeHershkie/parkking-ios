@@ -34,7 +34,49 @@ final class ParkingMapViewModel {
         }
     }
 
-    var pendingCameraRegion: MKCoordinateRegion?
+    var pendingCameraRegion: MKCoordinateRegion? {
+        get { cameraCoordinator.pendingCameraRegion }
+        set { cameraCoordinator.pendingCameraRegion = newValue }
+    }
+    var pendingCameraPitch: CGFloat? {
+        get { cameraCoordinator.pendingCameraPitch }
+        set { cameraCoordinator.pendingCameraPitch = newValue }
+    }
+    var visibleRegion: MKCoordinateRegion? {
+        get { cameraCoordinator.visibleRegion }
+        set { cameraCoordinator.visibleRegion = newValue }
+    }
+    var lastFlownRegion: MKCoordinateRegion? {
+        cameraCoordinator.lastFlownRegion
+    }
+    var is3D: Bool {
+        get { cameraCoordinator.is3D }
+        set { cameraCoordinator.is3D = newValue }
+    }
+    var mapStyle: MapViewStyle {
+        get { cameraCoordinator.mapStyle }
+        set { cameraCoordinator.setMapStyle(newValue) }
+    }
+    var userCoordinate: CLLocationCoordinate2D? {
+        locationCoordinator.userCoordinate
+    }
+    var isLocating: Bool {
+        get { locationCoordinator.isLocating }
+        set { locationCoordinator.isLocating = newValue }
+    }
+    var locationError: LocationClientError? {
+        get { locationCoordinator.locationError }
+        set { locationCoordinator.locationError = newValue }
+    }
+    var isLocationAuthorized: Bool {
+        get { locationCoordinator.isLocationAuthorized }
+        set { locationCoordinator.isLocationAuthorized = newValue }
+    }
+    var isLocationCentered: Bool {
+        get { locationCoordinator.isLocationCentered }
+        set { locationCoordinator.isLocationCentered = newValue }
+    }
+
     var selectedFeatureIDs: Set<String> = []
     var searchPin: SearchPinAnnotation?
     var tapDot: TapDotAnnotation?
@@ -54,18 +96,9 @@ final class ParkingMapViewModel {
     var locationLabel = "Search or tap the map"
     var recents: [SavedLocation] = []
     var favorites: [SavedLocation] = []
-    var isLocating = false
-    var locationError: LocationClientError?
-    var isLocationAuthorized = false
-    var isLocationCentered = false
-    var is3D = false
-    var pendingCameraPitch: CGFloat?
-    var mapStyle: MapViewStyle = .standard
-    private(set) var userCoordinate: CLLocationCoordinate2D?
-    private(set) var lastFlownRegion: MKCoordinateRegion?
     private(set) var lastSelectionSource: SelectionSource?
 
-    private static let mapStyleStorageKey = "parkking.mapStyle"
+    private static let timeQueryStorageKey = "parkking.appliedTimeQuery"
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
@@ -76,11 +109,10 @@ final class ParkingMapViewModel {
     private let openURL: (URL) -> Void
     private var dataset: ParkingDataset?
     private(set) var viewportGeneration = 0
-    private var clockTask: Task<Void, Never>?
+    private var queryClock: TimeQueryClock?
     private var reverseGeocodeTask: Task<Void, Never>?
-    private var visibleRegion: MKCoordinateRegion?
-    private var didAutoLocateThisLaunch = false
-    private var awaitingFirstGrant = false
+    let cameraCoordinator: MapCameraCoordinator
+    let locationCoordinator: LocationCoordinator
 
     var isDataReady: Bool {
         if case .loaded = loadState { return true }
@@ -101,11 +133,6 @@ final class ParkingMapViewModel {
         }
     }
 
-    var nearbyStreetRows: [NearbyStreetRow] {
-        guard let selection, let resolvedQuery else { return [] }
-        return NearbyCurbSides.streetRows(groups: selection.groups, resolved: resolvedQuery)
-    }
-
     init(
         dataStore: ParkingDataStore = ParkingDataStore(),
         locationClient: (any LocationProviding)? = nil,
@@ -116,40 +143,72 @@ final class ParkingMapViewModel {
         dataset: ParkingDataset? = nil,
         startsClock: Bool = true,
         openURL: ((URL) -> Void)? = nil,
-        mapStyle: MapViewStyle? = nil
+        mapStyle: MapViewStyle? = nil,
+        initialRegion: MKCoordinateRegion? = nil
     ) {
         self.dataStore = dataStore
-        self.locationClient = locationClient ?? LocationClient()
+        let client = locationClient ?? LocationClient()
+        self.locationClient = client
         self.recentsStore = recentsStore ?? RecentsStore()
         self.favoritesStore = favoritesStore ?? FavoritesStore()
         self.geocodingClient = geocodingClient ?? MapKitGeocodingClient()
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }
-        self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(now: now())
         self.recents = self.recentsStore.recents
         self.favorites = self.favoritesStore.favorites
-        self.isLocationAuthorized = self.locationClient.isAuthorized
 
-        if let mapStyle {
-            self.mapStyle = mapStyle
-        } else if let saved = UserDefaults.standard.string(forKey: Self.mapStyleStorageKey),
-                  let resolved = MapViewStyle(rawValue: saved) {
-            self.mapStyle = resolved
+        let camera = MapCameraCoordinator(mapStyle: mapStyle, initialRegion: initialRegion)
+        self.cameraCoordinator = camera
+
+        let location = LocationCoordinator(locationClient: client)
+        self.locationCoordinator = location
+
+        if let restored = Self.restoreAppliedQuery() {
+            self.appliedTimeQuery = restored
         } else {
-            self.mapStyle = .standard
+            self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(now: now())
         }
 
         if let dataset {
             install(dataset)
         }
         resolveAppliedQuery(recomputeViewport: false)
+
         self.locationClient.delegate = self
+        self.locationCoordinator.delegate = self
+    }
+
+    private static func restoreAppliedQuery() -> TimeQuery? {
+        guard !MapCameraCoordinator.isRunningInTest else { return nil }
+        guard let data = UserDefaults.standard.data(forKey: timeQueryStorageKey),
+              let query = try? JSONDecoder().decode(TimeQuery.self, from: data) else {
+            return nil
+        }
+        if query.mode == .custom {
+            return query
+        }
+        return nil
+    }
+
+    private func saveAppliedQuery(_ query: TimeQuery) {
+        guard !MapCameraCoordinator.isRunningInTest else { return }
+        if query.mode == .custom, let data = try? JSONEncoder().encode(query) {
+            UserDefaults.standard.set(data, forKey: Self.timeQueryStorageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.timeQueryStorageKey)
+        }
     }
 
     func setMapStyle(_ style: MapViewStyle) {
-        self.mapStyle = style
-        UserDefaults.standard.set(style.rawValue, forKey: Self.mapStyleStorageKey)
+        cameraCoordinator.setMapStyle(style)
+    }
+
+    func recenterToronto() {
+        cameraCoordinator.recenterToronto()
+        if let region = cameraCoordinator.pendingCameraRegion {
+            Task { await refreshViewport(region: region) }
+        }
     }
 
     func onAppear() {
@@ -166,13 +225,12 @@ final class ParkingMapViewModel {
     }
 
     func onDisappear() {
-        clockTask?.cancel()
-        clockTask = nil
+        queryClock?.stop()
     }
 
     func start() async {
         async let loadData: Void = loadIfNeeded()
-        async let locate: Void = maybeAutoLocate()
+        async let locate: Void = locationCoordinator.maybeAutoLocate()
         _ = await (loadData, locate)
     }
 
@@ -187,53 +245,33 @@ final class ParkingMapViewModel {
             startClock()
         }
         locationClient.refreshAuthorizationStatus()
-        Task { await handleAuthorizationChange() }
+        Task { await locationCoordinator.handleAuthorizationChange() }
         refreshNowIfNeeded(recomputeViewport: true)
     }
 
     func sceneBecameInactive() {
-        clockTask?.cancel()
-        clockTask = nil
+        queryClock?.stop()
     }
 
     func handleRegionChange(_ region: MKCoordinateRegion) async {
-        visibleRegion = region
+        cameraCoordinator.visibleRegion = region
+        cameraCoordinator.saveRegion(region)
         curbVisible = ParkingMapConstants.visibleWidthMeters(region)
             <= ParkingMapConstants.curbVisibleMaxWidthMeters
-        if let userCoordinate {
-            let latDelta = abs(region.center.latitude - userCoordinate.latitude)
-            let lngDelta = abs(region.center.longitude - userCoordinate.longitude)
-            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
-        } else {
-            isLocationCentered = false
-        }
+        locationCoordinator.updateCenteredState(with: region)
         await refreshViewport(region: region)
     }
 
     func updateUserCoordinate(_ coordinate: CLLocationCoordinate2D) {
-        userCoordinate = coordinate
-        if let visibleRegion {
-            let latDelta = abs(visibleRegion.center.latitude - coordinate.latitude)
-            let lngDelta = abs(visibleRegion.center.longitude - coordinate.longitude)
-            isLocationCentered = latDelta < 0.0005 && lngDelta < 0.0005
-        }
+        locationCoordinator.updateUserCoordinate(coordinate, visibleRegion: cameraCoordinator.visibleRegion)
     }
 
     func toggle3D() {
-        if is3D {
-            is3D = false
-            pendingCameraPitch = 0
-        } else {
-            is3D = true
-            pendingCameraPitch = 55
-        }
+        cameraCoordinator.toggle3D()
     }
 
     func updatePitch(_ pitch: CGFloat) {
-        let now3D = pitch > 20
-        if is3D != now3D {
-            is3D = now3D
-        }
+        cameraCoordinator.updatePitch(pitch)
     }
 
     func handleTap(at coordinate: CLLocationCoordinate2D) {
@@ -263,6 +301,7 @@ final class ParkingMapViewModel {
         if tapDot != nil {
             tapDot?.color = dotColor(for: group, resolved: resolvedQuery)
         }
+        HapticFeedback.selectionChanged()
         syncSelectedFeatureIDs()
         recomputeVerdict()
     }
@@ -302,6 +341,8 @@ final class ParkingMapViewModel {
         var next = query
         next.requestedDurationMinutes = ParkingTimeQuery.clampDuration(next.requestedDurationMinutes)
         appliedTimeQuery = next
+        saveAppliedQuery(next)
+        HapticFeedback.selectionChanged()
         resolveAppliedQuery(recomputeViewport: true)
     }
 
@@ -326,60 +367,15 @@ final class ParkingMapViewModel {
     }
 
     func tapLocate() {
-        Task { await tapLocateAsync() }
+        locationCoordinator.tapLocate()
     }
 
     func tapLocateAsync() async {
-        locationError = nil
-
-        if !locationClient.servicesEnabled {
-            locationError = .servicesDisabled
-            return
-        }
-
-        switch locationClient.authorizationStatus {
-        case .notDetermined:
-            awaitingFirstGrant = true
-            locationClient.requestWhenInUsePermission()
-        case .restricted:
-            locationError = .restricted
-        case .denied:
-            locationError = .denied
-        case .authorizedAlways, .authorizedWhenInUse:
-            await performLocate()
-        @unknown default:
-            break
-        }
+        await locationCoordinator.tapLocateAsync()
     }
 
     func handleAuthorizationChange() async {
-        isLocationAuthorized = locationClient.isAuthorized
-        if !locationClient.servicesEnabled {
-            locationError = .servicesDisabled
-            awaitingFirstGrant = false
-            return
-        }
-
-        switch locationClient.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
-            locationError = nil
-            if awaitingFirstGrant {
-                awaitingFirstGrant = false
-                await performLocate()
-            } else {
-                await maybeAutoLocate()
-            }
-        case .denied:
-            locationError = .denied
-            awaitingFirstGrant = false
-        case .restricted:
-            locationError = .restricted
-            awaitingFirstGrant = false
-        case .notDetermined:
-            break
-        @unknown default:
-            break
-        }
+        await locationCoordinator.handleAuthorizationChange()
     }
 
     func openSettings() {
@@ -462,9 +458,7 @@ final class ParkingMapViewModel {
 
         if fly {
             let region = ParkingMapConstants.neighborhoodRegion(around: coordinate)
-            pendingCameraRegion = region
-            lastFlownRegion = region
-            visibleRegion = region
+            cameraCoordinator.flyTo(region: region)
             curbVisible = true
         }
 
@@ -497,9 +491,8 @@ final class ParkingMapViewModel {
         if let resolved = resolvedQuery {
             enrichedSubset = ParkingSpatialIndex.enrichFeaturesSubset(
                 subset,
-                slot: resolved.slot,
-                includeUnknown: true,
-                endMinuteOfDay: resolved.effectiveEndMinute
+                resolved: resolved,
+                includeUnknown: true
             ).features
         } else {
             enrichedSubset = subset
@@ -546,26 +539,19 @@ final class ParkingMapViewModel {
                 locationLabel = selected.street
 
                 let targetStreet = selected.street
-                let candidateCoords = buildCandidateCoordinates(nearest: nearestCoord, primaryFeature: primaryFeature)
+                let candidateCoords = AddressGeocodingResolver.buildCandidateCoordinates(
+                    nearest: nearestCoord,
+                    primaryFeature: primaryFeature
+                )
 
-                reverseGeocodeTask = Task { [weak self] in
+                reverseGeocodeTask = AddressGeocodingResolver.resolveTapAddress(
+                    geocodingClient: geocodingClient,
+                    candidateCoords: candidateCoords,
+                    targetStreet: targetStreet
+                ) { [weak self] address in
                     guard let self else { return }
-                    for candidate in candidateCoords {
-                        if Task.isCancelled { return }
-                        if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: candidate),
-                           let cleaned = AddressFormatter.cleanAddress(rawAddress),
-                           AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
-                            await MainActor.run {
-                                self.cardAddress = cleaned
-                                self.locationLabel = cleaned
-                            }
-                            return
-                        }
-                    }
-                    await MainActor.run {
-                        self.cardAddress = targetStreet
-                        self.locationLabel = targetStreet
-                    }
+                    self.cardAddress = address
+                    self.locationLabel = address
                 }
             } else {
                 tapDot = nil
@@ -596,28 +582,27 @@ final class ParkingMapViewModel {
             if isCoordinateOrGeneric {
                 let lookupCoord = coordinate
                 let targetStreet = result.selected?.street
-                reverseGeocodeTask = Task { [weak self] in
+                reverseGeocodeTask = AddressGeocodingResolver.resolveSearchOrGenericAddress(
+                    geocodingClient: geocodingClient,
+                    coordinate: lookupCoord,
+                    targetStreet: targetStreet
+                ) { [weak self] address, isMismatch in
                     guard let self else { return }
-                    if let rawAddress = await self.geocodingClient.reverseGeocode(coordinate: lookupCoord),
-                       let cleaned = AddressFormatter.cleanAddress(rawAddress) {
-                        await MainActor.run {
-                            self.cardAddress = cleaned
-                            self.locationLabel = cleaned
-                            if let targetStreet, !AddressFormatter.streetNamesMatch(address: cleaned, targetStreet: targetStreet) {
-                                // Address of the dropped pin / search is on a street with no mapped bylaw segments.
-                                // Show the address of the pin, do not highlight unrelated segment, give "Likely allowed" verdict.
-                                self.selectedFeatureIDs = []
-                                self.selection = nil
-                                if let resolved = self.resolvedQuery {
-                                    self.verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
-                                        features: [],
-                                        resolved: resolved,
-                                        street: cleaned,
-                                        side: nil,
-                                        sideDisplay: nil
-                                    )
-                                }
-                            }
+                    self.cardAddress = address
+                    self.locationLabel = address
+                    if isMismatch {
+                        // Address of the dropped pin / search is on a street with no mapped bylaw segments.
+                        // Show the address of the pin, do not highlight unrelated segment, give "Likely allowed" verdict.
+                        self.selectedFeatureIDs = []
+                        self.selection = nil
+                        if let resolved = self.resolvedQuery {
+                            self.verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
+                                features: [],
+                                resolved: resolved,
+                                street: address,
+                                side: nil,
+                                sideDisplay: nil
+                            )
                         }
                     }
                 }
@@ -627,22 +612,6 @@ final class ParkingMapViewModel {
         if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
         }
-    }
-
-    private func buildCandidateCoordinates(
-        nearest: CLLocationCoordinate2D,
-        primaryFeature: ParkingFeature?
-    ) -> [CLLocationCoordinate2D] {
-        var candidates: [CLLocationCoordinate2D] = [nearest]
-        guard let primaryFeature, let coords = primaryFeature.coordinateParts.first, coords.count >= 2 else {
-            return candidates
-        }
-
-        let midIndex = coords.count / 2
-        candidates.append(coords[midIndex])
-        candidates.append(coords[0])
-        candidates.append(coords[coords.count - 1])
-        return candidates
     }
 
     func selectAtPoint(
@@ -684,23 +653,12 @@ final class ParkingMapViewModel {
     }
 
     private func startClock() {
-        clockTask?.cancel()
-        clockTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                let now = self.now()
-                var cal = Calendar(identifier: .gregorian)
-                cal.timeZone = ParkingTimeQuery.torontoTimeZone
-                let seconds = cal.component(.second, from: now)
-                let toNextMinute = max(1.0, Double(60 - seconds))
-                let sleepSeconds = min(30.0, toNextMinute)
-                try? await Task.sleep(nanoseconds: UInt64(sleepSeconds * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                await MainActor.run {
-                    self.refreshNowIfNeeded(recomputeViewport: true)
-                }
+        if queryClock == nil {
+            queryClock = TimeQueryClock(now: now) { [weak self] in
+                self?.refreshNowIfNeeded(recomputeViewport: true)
             }
         }
+        queryClock?.start()
     }
 
     private func refreshNowIfNeeded(recomputeViewport: Bool) {
@@ -769,35 +727,6 @@ final class ParkingMapViewModel {
         )
     }
 
-    private func maybeAutoLocate() async {
-        guard !didAutoLocateThisLaunch else { return }
-        guard locationClient.servicesEnabled else { return }
-        guard locationClient.isAuthorized else { return }
-        didAutoLocateThisLaunch = true
-        await performLocate()
-    }
-
-    private func performLocate() async {
-        isLocating = true
-        defer { isLocating = false }
-        do {
-            let location = try await locationClient.requestOneShotLocation()
-            didAutoLocateThisLaunch = true
-            userCoordinate = location.coordinate
-            isLocationCentered = true
-            let region = ParkingMapConstants.neighborhoodRegion(around: location.coordinate)
-            pendingCameraRegion = region
-            lastFlownRegion = region
-            visibleRegion = region
-            curbVisible = true
-            Task { await self.refreshViewport(region: region) }
-        } catch let error as LocationClientError {
-            locationError = error
-        } catch {
-            locationError = .failed(error.localizedDescription)
-        }
-    }
-
     private func refreshViewport(region: MKCoordinateRegion) async {
         guard let dataset, let resolved = resolvedQuery else {
             if !renderItems.isEmpty { renderItems = [] }
@@ -822,9 +751,8 @@ final class ParkingMapViewModel {
             let subset = index.queryBBox(bbox, padDeg: ParkingMapConstants.viewportPadDegrees)
             let enriched = ParkingSpatialIndex.enrichFeaturesSubset(
                 subset,
-                slot: resolved.slot,
-                includeUnknown: true,
-                endMinuteOfDay: resolved.effectiveEndMinute
+                resolved: resolved,
+                includeUnknown: true
             )
             return CurbOverlapResolver.resolveViewportOverlaps(features: enriched.features)
         }.value
@@ -839,5 +767,13 @@ final class ParkingMapViewModel {
 extension ParkingMapViewModel: LocationClientDelegate {
     func locationClientDidChangeAuthorization(_ client: LocationProviding) {
         Task { await handleAuthorizationChange() }
+    }
+}
+
+extension ParkingMapViewModel: LocationCoordinatorDelegate {
+    func locationCoordinatorDidLocate(coordinate: CLLocationCoordinate2D, region: MKCoordinateRegion) {
+        cameraCoordinator.flyTo(region: region)
+        curbVisible = true
+        Task { await self.refreshViewport(region: region) }
     }
 }

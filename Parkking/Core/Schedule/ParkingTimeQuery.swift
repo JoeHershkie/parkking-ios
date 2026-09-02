@@ -1,16 +1,43 @@
 import Foundation
 
-enum TimeMode: String, Sendable, Equatable, Hashable {
+enum TimeMode: String, Sendable, Equatable, Hashable, Codable {
     case now
     case custom
 }
 
-enum DurationPreset: Sendable, Equatable, Hashable {
+enum DurationPreset: Sendable, Equatable, Hashable, Codable {
     case minutes(Int)
     case custom
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case minutes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        if type == "minutes" {
+            let mins = try container.decode(Int.self, forKey: .minutes)
+            self = .minutes(mins)
+        } else {
+            self = .custom
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .minutes(let mins):
+            try container.encode("minutes", forKey: .type)
+            try container.encode(mins, forKey: .minutes)
+        case .custom:
+            try container.encode("custom", forKey: .type)
+        }
+    }
 }
 
-struct TimeQuery: Sendable, Equatable {
+struct TimeQuery: Sendable, Equatable, Codable {
     var mode: TimeMode
     /// Calendar date YYYY-MM-DD when mode is custom; ignored when now.
     var date: String
@@ -37,9 +64,12 @@ struct TimeQuery: Sendable, Equatable {
 
 struct ResolvedTimeQuery: Sendable, Equatable {
     var slot: Slot
-    /// Effective end minute of day, or nil when duration is zero/point check.
+    /// Effective end minute of day for single-day query, or 1440 if spanning past midnight, or nil for point check.
     var effectiveEndMinute: Int?
     var requestedDurationMinutes: Int
+    var crossesMidnight: Bool
+    var nextDaySlot: Slot?
+    var nextDayEndMinute: Int?
     var truncatedAtMidnight: Bool
     var label: String
 
@@ -47,12 +77,18 @@ struct ResolvedTimeQuery: Sendable, Equatable {
         slot: Slot,
         effectiveEndMinute: Int?,
         requestedDurationMinutes: Int,
-        truncatedAtMidnight: Bool,
+        crossesMidnight: Bool = false,
+        nextDaySlot: Slot? = nil,
+        nextDayEndMinute: Int? = nil,
+        truncatedAtMidnight: Bool = false,
         label: String
     ) {
         self.slot = slot
         self.effectiveEndMinute = effectiveEndMinute
         self.requestedDurationMinutes = requestedDurationMinutes
+        self.crossesMidnight = crossesMidnight
+        self.nextDaySlot = nextDaySlot
+        self.nextDayEndMinute = nextDayEndMinute
         self.truncatedAtMidnight = truncatedAtMidnight
         self.label = label
     }
@@ -102,22 +138,50 @@ enum ParkingTimeQuery {
                 slot: slot,
                 effectiveEndMinute: nil,
                 requestedDurationMinutes: requested,
+                crossesMidnight: false,
+                nextDaySlot: nil,
+                nextDayEndMinute: nil,
                 truncatedAtMidnight: false,
                 label: formatSlotLabel(slot, endMinuteOfDay: nil, now: now, timeZone: timeZone)
             )
         }
 
         let rawEnd = slot.minuteOfDay + requested
-        let truncatedAtMidnight = rawEnd > midnightMinute
-        let effectiveEnd = truncatedAtMidnight ? midnightMinute : rawEnd
-        let effectiveEndMinute = effectiveEnd > slot.minuteOfDay ? effectiveEnd : nil
+        if rawEnd <= 1440 {
+            let effectiveEndMinute = rawEnd > slot.minuteOfDay ? rawEnd : nil
+            return ResolvedTimeQuery(
+                slot: slot,
+                effectiveEndMinute: effectiveEndMinute,
+                requestedDurationMinutes: requested,
+                crossesMidnight: false,
+                nextDaySlot: nil,
+                nextDayEndMinute: nil,
+                truncatedAtMidnight: false,
+                label: formatSlotLabel(slot, endMinuteOfDay: effectiveEndMinute, now: now, timeZone: timeZone)
+            )
+        }
+
+        let startDate = date(
+            fromTorontoDateString: slotToDateString(slot),
+            minuteOfDay: slot.minuteOfDay,
+            timeZone: timeZone
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let nextDate = calendar.date(byAdding: .day, value: 1, to: startDate) ?? startDate.addingTimeInterval(86400)
+        var nextDaySlot = slotFromDate(nextDate, timeZone: timeZone)
+        nextDaySlot.minuteOfDay = 0
+        let nextDayEndMinute = rawEnd - 1440
 
         return ResolvedTimeQuery(
             slot: slot,
-            effectiveEndMinute: effectiveEndMinute,
+            effectiveEndMinute: 1440,
             requestedDurationMinutes: requested,
-            truncatedAtMidnight: truncatedAtMidnight,
-            label: formatSlotLabel(slot, endMinuteOfDay: effectiveEndMinute, now: now, timeZone: timeZone)
+            crossesMidnight: true,
+            nextDaySlot: nextDaySlot,
+            nextDayEndMinute: nextDayEndMinute,
+            truncatedAtMidnight: false,
+            label: formatSlotLabel(slot, endMinuteOfDay: rawEnd, now: now, timeZone: timeZone)
         )
     }
 
@@ -250,12 +314,13 @@ enum ParkingTimeQuery {
         } else {
             start = query.startMinute
         }
-        return start + query.requestedDurationMinutes > midnightMinute
+        return start + query.requestedDurationMinutes > 1440
     }
 
     nonisolated static func formatTime(_ minuteOfDay: Int) -> String {
-        let hour24 = minuteOfDay / 60
-        let minute = minuteOfDay % 60
+        let normalized = ((minuteOfDay % 1440) + 1440) % 1440
+        let hour24 = normalized / 60
+        let minute = normalized % 60
         let hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12
         let ampm = hour24 < 12 ? "am" : "pm"
         return String(format: "%d:%02d%@", hour12, minute, ampm)
