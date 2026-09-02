@@ -10,7 +10,7 @@ struct ParkingMapKitView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> MKMapView {
-        let map = ParkkingMapView(frame: .zero)
+        let map = MKMapView(frame: .zero)
         map.delegate = context.coordinator
         map.isRotateEnabled = true
         map.isPitchEnabled = true
@@ -231,16 +231,36 @@ struct ParkingMapKitView: UIViewRepresentable {
             plan: ParkingOverlayStyling.Plan,
             byID: [ParkingMapRenderItem.ID: ParkingMapRenderItem]
         ) {
-            map.removeOverlays(Array(colorOverlays.values))
-            colorOverlays.removeAll(keepingCapacity: true)
             let isSatellite = (viewModel.mapStyle == .satellite)
             for kind in ParkingOverlayBucketKind.drawOrder {
-                guard let ids = plan.colorBuckets[kind], !ids.isEmpty else { continue }
+                let ids = plan.colorBuckets[kind] ?? []
+                let existing = colorOverlays[kind]
+
+                if ids.isEmpty {
+                    if let existing {
+                        map.removeOverlay(existing)
+                        colorOverlays.removeValue(forKey: kind)
+                    }
+                    continue
+                }
+
+                // Retain existing overlay if item IDs and satellite mode are identical
+                if let existing, existing.itemIDs == ids, existing.isSatellite == isSatellite {
+                    continue
+                }
+
+                if let existing {
+                    map.removeOverlay(existing)
+                }
+
                 let groupItems = ids.compactMap { byID[$0] }
-                guard !groupItems.isEmpty else { continue }
+                guard !groupItems.isEmpty else {
+                    colorOverlays.removeValue(forKey: kind)
+                    continue
+                }
                 let overlay = ParkingStyledOverlay(kind: kind, role: .base, isSatellite: isSatellite, items: groupItems)
                 colorOverlays[kind] = overlay
-                map.addOverlay(overlay, level: .aboveLabels)
+                map.addOverlay(overlay, level: .aboveRoads)
             }
         }
 
@@ -264,7 +284,7 @@ struct ParkingMapKitView: UIViewRepresentable {
                 guard !groupItems.isEmpty else { continue }
                 let overlay = ParkingStyledOverlay(kind: kind, role: .selectedBorder, isSatellite: isSatellite, items: groupItems)
                 selectedOverlays.append(overlay)
-                map.addOverlay(overlay, level: .aboveLabels)
+                map.addOverlay(overlay, level: .aboveRoads)
             }
 
             // 2. Add fill overlays second (rendered on top of border with item's color at thickness 8)
@@ -274,7 +294,7 @@ struct ParkingMapKitView: UIViewRepresentable {
                 guard !groupItems.isEmpty else { continue }
                 let overlay = ParkingStyledOverlay(kind: kind, role: .selectedFill, isSatellite: isSatellite, items: groupItems)
                 selectedOverlays.append(overlay)
-                map.addOverlay(overlay, level: .aboveLabels)
+                map.addOverlay(overlay, level: .aboveRoads)
             }
         }
 
@@ -438,24 +458,6 @@ final class TapDotAnnotationView: MKAnnotationView {
 
     func configure(with dotAnnotation: TapDotAnnotation) {
         dotView.backgroundColor = dotAnnotation.color
-    }
-}
-
-final class ParkkingMapView: MKMapView {
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        repositionAttributionAndLogo()
-    }
-
-    private func repositionAttributionAndLogo() {
-        for subview in subviews {
-            let className = NSStringFromClass(type(of: subview))
-            if className.contains("AppleLogo") || (subview is UIImageView && subview.bounds.width < 100 && subview.bounds.height < 40 && subview.frame.origin.y > bounds.height - 250) {
-                let x = (bounds.width - subview.bounds.width) / 2
-                let y = bounds.height - subview.bounds.height - max(safeAreaInsets.bottom, 4)
-                subview.frame = CGRect(x: x, y: y, width: subview.bounds.width, height: subview.bounds.height)
-            }
-        }
     }
 }
 

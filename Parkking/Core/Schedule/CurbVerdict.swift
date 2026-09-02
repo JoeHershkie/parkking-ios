@@ -62,6 +62,11 @@ struct CurbVerdict: Sendable, Equatable {
     var sideDisplay: String?
     var allowedStartMinute: Int?
     var allowedEndMinute: Int?
+    var permitAreaID: String?
+    var hasHydrant: Bool?
+    var isSnowRoute: Bool?
+    var regionalWinterRule: String?
+    var formerMunicipality: String?
 
     nonisolated init(
         status: CurbVerdictStatus,
@@ -77,7 +82,12 @@ struct CurbVerdict: Sendable, Equatable {
         side: String?,
         sideDisplay: String?,
         allowedStartMinute: Int? = nil,
-        allowedEndMinute: Int? = nil
+        allowedEndMinute: Int? = nil,
+        permitAreaID: String? = nil,
+        hasHydrant: Bool? = nil,
+        isSnowRoute: Bool? = nil,
+        regionalWinterRule: String? = nil,
+        formerMunicipality: String? = nil
     ) {
         self.status = status
         self.headline = headline
@@ -93,6 +103,11 @@ struct CurbVerdict: Sendable, Equatable {
         self.sideDisplay = sideDisplay
         self.allowedStartMinute = allowedStartMinute
         self.allowedEndMinute = allowedEndMinute
+        self.permitAreaID = permitAreaID
+        self.hasHydrant = hasHydrant
+        self.isSnowRoute = isSnowRoute
+        self.regionalWinterRule = regionalWinterRule
+        self.formerMunicipality = formerMunicipality
     }
 }
 
@@ -101,6 +116,9 @@ struct ComposeCurbVerdictOptions: Sendable {
     var slot: Slot
     var effectiveEndMinute: Int?
     var requestedDurationMinutes: Int
+    var crossesMidnight: Bool
+    var nextDaySlot: Slot?
+    var nextDayEndMinute: Int?
     var truncatedAtMidnight: Bool
     var includeUnknown: Bool
     var street: String?
@@ -112,6 +130,9 @@ struct ComposeCurbVerdictOptions: Sendable {
         slot: Slot,
         effectiveEndMinute: Int?,
         requestedDurationMinutes: Int,
+        crossesMidnight: Bool = false,
+        nextDaySlot: Slot? = nil,
+        nextDayEndMinute: Int? = nil,
         truncatedAtMidnight: Bool = false,
         includeUnknown: Bool = true,
         street: String? = nil,
@@ -122,6 +143,9 @@ struct ComposeCurbVerdictOptions: Sendable {
         self.slot = slot
         self.effectiveEndMinute = effectiveEndMinute
         self.requestedDurationMinutes = requestedDurationMinutes
+        self.crossesMidnight = crossesMidnight
+        self.nextDaySlot = nextDaySlot
+        self.nextDayEndMinute = nextDayEndMinute
         self.truncatedAtMidnight = truncatedAtMidnight
         self.includeUnknown = includeUnknown
         self.street = street
@@ -363,6 +387,12 @@ enum CurbVerdictComposer {
         let midnightWarning =
             options.truncatedAtMidnight ? ParkingTimeQuery.midnightWarning : nil
 
+        let permitAreaID = options.features.compactMap(\.properties.permitAreaID).first
+        let hasHydrant = options.features.contains { $0.properties.hasHydrant == true } ? true : nil
+        let isSnowRoute = options.features.contains { $0.properties.isSnowRoute == true } ? true : nil
+        let regionalWinterRule = options.features.compactMap(\.properties.regionalWinterRule).first
+        let formerMunicipality = options.features.compactMap(\.properties.formerMunicipality).first
+
         if options.features.isEmpty {
             return CurbVerdict(
                 status: .likelyAllowed,
@@ -378,17 +408,41 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
         let contributingRules = options.features.map { feature in
-            let evaluation = ScheduleEvaluator.evaluateInRange(
-                props: feature.properties,
-                slot: options.slot,
-                endMinuteOfDay: options.effectiveEndMinute,
-                includeUnknown: options.includeUnknown
-            )
+            let evaluation: SlotEvaluation
+            if options.crossesMidnight {
+                let query = ResolvedTimeQuery(
+                    slot: options.slot,
+                    effectiveEndMinute: options.effectiveEndMinute,
+                    requestedDurationMinutes: options.requestedDurationMinutes,
+                    crossesMidnight: true,
+                    nextDaySlot: options.nextDaySlot,
+                    nextDayEndMinute: options.nextDayEndMinute,
+                    truncatedAtMidnight: options.truncatedAtMidnight,
+                    label: ""
+                )
+                evaluation = ScheduleEvaluator.evaluateQuery(
+                    props: feature.properties,
+                    query: query,
+                    includeUnknown: options.includeUnknown
+                )
+            } else {
+                evaluation = ScheduleEvaluator.evaluateInRange(
+                    props: feature.properties,
+                    slot: options.slot,
+                    endMinuteOfDay: options.effectiveEndMinute,
+                    includeUnknown: options.includeUnknown
+                )
+            }
             return classifyRule(
                 feature: feature,
                 evaluation: evaluation,
@@ -436,18 +490,42 @@ enum CurbVerdictComposer {
         let maxStayWarning = maxStayRule?.reason
 
         // If there's an interval query, evaluate minute-by-minute to detect partial allowance.
-        if let endMinute = options.effectiveEndMinute, endMinute > options.slot.minuteOfDay {
-            let startMinute = options.slot.minuteOfDay
+        if options.requestedDurationMinutes > 0 {
+            let duration = options.requestedDurationMinutes
+            let slotForOffset: (Int) -> Slot = { offset in
+                let absoluteMinute = options.slot.minuteOfDay + offset
+                if absoluteMinute < 1440 {
+                    return Slot(
+                        dayOfWeek: options.slot.dayOfWeek,
+                        minuteOfDay: absoluteMinute,
+                        month: options.slot.month,
+                        dayOfMonth: options.slot.dayOfMonth,
+                        year: options.slot.year
+                    )
+                } else {
+                    let m2 = absoluteMinute - 1440
+                    if let nextDaySlot = options.nextDaySlot {
+                        return Slot(
+                            dayOfWeek: nextDaySlot.dayOfWeek,
+                            minuteOfDay: m2,
+                            month: nextDaySlot.month,
+                            dayOfMonth: nextDaySlot.dayOfMonth,
+                            year: nextDaySlot.year
+                        )
+                    } else {
+                        return Slot(
+                            dayOfWeek: (options.slot.dayOfWeek + 1) % 7,
+                            minuteOfDay: m2,
+                            month: options.slot.month,
+                            dayOfMonth: options.slot.dayOfMonth,
+                            year: options.slot.year
+                        )
+                    }
+                }
+            }
 
-            let minuteIsAllowed: (Int) -> Bool = { m in
-                let elapsedMinutes = m - startMinute
-                let slotM = Slot(
-                    dayOfWeek: options.slot.dayOfWeek,
-                    minuteOfDay: m,
-                    month: options.slot.month,
-                    dayOfMonth: options.slot.dayOfMonth,
-                    year: options.slot.year
-                )
+            let minuteIsAllowed: (Int) -> Bool = { offset in
+                let slotM = slotForOffset(offset)
                 let rulesM = options.features.map { feature in
                     let eval = ScheduleEvaluator.evaluateAtSlot(
                         props: feature.properties,
@@ -457,7 +535,7 @@ enum CurbVerdictComposer {
                     return classifyRule(
                         feature: feature,
                         evaluation: eval,
-                        requestedDurationMinutes: elapsedMinutes + 1
+                        requestedDurationMinutes: offset + 1
                     )
                 }
                 let permitM = rulesM.contains { $0.kind == .allowed }
@@ -477,15 +555,8 @@ enum CurbVerdictComposer {
                 return restrictionsM.isEmpty && uncertainM.isEmpty
             }
 
-            let minuteIsRestricted: (Int) -> Bool = { m in
-                let elapsedMinutes = m - startMinute
-                let slotM = Slot(
-                    dayOfWeek: options.slot.dayOfWeek,
-                    minuteOfDay: m,
-                    month: options.slot.month,
-                    dayOfMonth: options.slot.dayOfMonth,
-                    year: options.slot.year
-                )
+            let minuteIsRestricted: (Int) -> Bool = { offset in
+                let slotM = slotForOffset(offset)
                 let rulesM = options.features.map { feature in
                     let eval = ScheduleEvaluator.evaluateAtSlot(
                         props: feature.properties,
@@ -495,7 +566,7 @@ enum CurbVerdictComposer {
                     return classifyRule(
                         feature: feature,
                         evaluation: eval,
-                        requestedDurationMinutes: elapsedMinutes + 1
+                        requestedDurationMinutes: offset + 1
                     )
                 }
                 let permitM = rulesM.contains { $0.kind == .allowed }
@@ -514,21 +585,23 @@ enum CurbVerdictComposer {
                 return !restrictionsM.isEmpty
             }
 
-            let anyAllowed = (startMinute..<endMinute).contains(where: minuteIsAllowed)
-            let anyRestricted = (startMinute..<endMinute).contains(where: minuteIsRestricted)
+            let anyAllowed = (0..<duration).contains(where: minuteIsAllowed)
+            let anyRestricted = (0..<duration).contains(where: minuteIsRestricted)
 
             if anyAllowed && anyRestricted {
                 let intervals = findContiguousAllowedIntervals(
-                    startMinute: startMinute,
-                    endMinute: endMinute,
+                    startMinute: 0,
+                    endMinute: duration,
                     isAllowed: minuteIsAllowed
                 )
-                let bestInterval = intervals.first(where: { $0.start == startMinute })
+                let bestInterval = intervals.first(where: { $0.start == 0 })
                     ?? intervals.max(by: { ($0.end - $0.start) < ($1.end - $1.start) })
 
                 if let bestInterval {
-                    let startFormatted = ParkingTimeQuery.formatTime(bestInterval.start)
-                    let endFormatted = ParkingTimeQuery.formatTime(bestInterval.end)
+                    let startAbs = options.slot.minuteOfDay + bestInterval.start
+                    let endAbs = options.slot.minuteOfDay + bestInterval.end
+                    let startFormatted = ParkingTimeQuery.formatTime(startAbs)
+                    let endFormatted = ParkingTimeQuery.formatTime(endAbs)
                     let headline = "Partially allowed, from \(startFormatted) to \(endFormatted)"
                     let primary = pickPrimary(hardRestrictions)
 
@@ -545,8 +618,13 @@ enum CurbVerdictComposer {
                         street: options.street,
                         side: options.side,
                         sideDisplay: options.sideDisplay,
-                        allowedStartMinute: bestInterval.start,
-                        allowedEndMinute: bestInterval.end
+                        allowedStartMinute: startAbs % 1440,
+                        allowedEndMinute: endAbs % 1440,
+                        permitAreaID: permitAreaID,
+                        hasHydrant: hasHydrant,
+                        isSnowRoute: isSnowRoute,
+                        regionalWinterRule: regionalWinterRule,
+                        formerMunicipality: formerMunicipality
                     )
                 }
             }
@@ -567,7 +645,12 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
@@ -585,7 +668,12 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
@@ -601,7 +689,12 @@ enum CurbVerdictComposer {
             signageReminder: signageReminder,
             street: options.street,
             side: options.side,
-            sideDisplay: options.sideDisplay
+            sideDisplay: options.sideDisplay,
+            permitAreaID: permitAreaID,
+            hasHydrant: hasHydrant,
+            isSnowRoute: isSnowRoute,
+            regionalWinterRule: regionalWinterRule,
+            formerMunicipality: formerMunicipality
         )
     }
 
@@ -618,6 +711,9 @@ enum CurbVerdictComposer {
                 slot: resolved.slot,
                 effectiveEndMinute: resolved.effectiveEndMinute,
                 requestedDurationMinutes: resolved.requestedDurationMinutes,
+                crossesMidnight: resolved.crossesMidnight,
+                nextDaySlot: resolved.nextDaySlot,
+                nextDayEndMinute: resolved.nextDayEndMinute,
                 truncatedAtMidnight: resolved.truncatedAtMidnight,
                 street: street,
                 side: side,

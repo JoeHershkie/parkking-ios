@@ -1,9 +1,57 @@
 {
-  "scheduleSchemaVersion": 1,
-  "featureCount": 21424,
-  "byteSize": 30495169,
-  "sha256": "a8fc75d6284509281d75ee622c7773518580b014f4ccdac2a56585d00bdc0cf1",
-  "sourceRepo": "parking-pipeline",
-  "sourceRevision": "0a68237adf8b81d06b97717aa0883e50e0cdec99",
-  "filename": "final_parking_map.geojson"
+  "artifact": "parking_map.sqlite",
+  "format": "sqlite3_rtree_wkb",
+  "schema_version": 1,
+  "pipeline_version": "0.1.0",
+  "generated_at": "2026-09-02T17:10:41.760273+00:00",
+  "sha256": "e30eb8fa91b9b35356bc68b67aa2defd88c933b39020573f41c6d06fdae23e28",
+  "file_size_bytes": 15212544,
+  "feature_count": 21424,
+  "bounding_box": {
+    "min_lng": -79.63910645627018,
+    "min_lat": 43.58649351468579,
+    "max_lng": -79.12188649422365,
+    "max_lat": 43.84803502740176
+  },
+  "metadata": {
+    "generated_at": "2026-08-20T03:53:34.318707+00:00",
+    "pipeline_version": "0.1.0",
+    "feature_count": 21424,
+    "input_row_count": 22763,
+    "tcl_streets_mtime": "2026-06-19T21:36:35.656097+00:00",
+    "tcl_intersections_mtime": "2026-06-19T21:36:35.685015+00:00",
+    "road_edges": {
+      "source": "/Users/joey/Documents/Develop/Projects/parking-pipeline/pipeline/data/topographic_road_edges.gpkg",
+      "crs": "EPSG:32617",
+      "manifest": {
+        "service_url": "https://gis.toronto.ca/arcgis/rest/services/cot_geospatial3/FeatureServer/3",
+        "query": "SUBTYPE_DESC IN ('Road Edge','Intersection')",
+        "fetch_time": "2026-08-20T02:51:56.467832+00:00",
+        "feature_counts": {
+          "Road Edge": 34445,
+          "Intersection": 19475,
+          "total": 53920
+        },
+        "crs": "EPSG:4326",
+        "max_last_geometry_maint": "2024-11-26T18:51:59+00:00",
+        "object_id_min": 1,
+        "object_id_max": 149541,
+        "batch_size": 2000,
+        "layer_name": "Road Line",
+        "catalogue_url": "https://open.toronto.ca/dataset/topographic-mapping-edge-of-road/",
+        "catalogue_status": "retired"
+      },
+      "road_strip_count": 34445,
+      "intersection_count": 19475
+    },
+    "curb_geometry": {
+      "methods": {
+        "road_edge": 18152,
+        "offset_fallback": 1708,
+        "centerline_unresolved": 1564
+      },
+      "mean_confidence": 0.7872848108323567,
+      "conservative_global_offset_m": 3.5
+    }
+  }
 }

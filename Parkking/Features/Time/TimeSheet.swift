@@ -71,14 +71,6 @@ struct TimeSheet: View {
                         .accessibilityLabel("Apply custom time")
                     }
                     .frame(minHeight: 44)
-
-                    if ParkingTimeQuery.draftCrossesMidnight(draft) {
-                        Text(ParkingTimeQuery.midnightWarning)
-                            .font(.footnote.weight(.semibold))
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)

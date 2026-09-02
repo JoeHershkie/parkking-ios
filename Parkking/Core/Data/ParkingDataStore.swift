@@ -34,7 +34,7 @@ enum ParkingDataError: LocalizedError, Sendable, Equatable {
     }
 }
 
-/// Loads the bundled GeoJSON off the main actor, optionally validates SHA-256,
+/// Loads the bundled SQLite database or GeoJSON off the main actor, optionally validates SHA-256,
 /// builds the spatial index, and publishes load state.
 actor ParkingDataStore {
     private(set) var state: ParkingDataLoadState = .idle
@@ -78,24 +78,39 @@ actor ParkingDataStore {
         let digest: String
         if validateHash {
             digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            if digest != manifest.sha256 {
+            if !manifest.sha256.isEmpty && digest != manifest.sha256 {
                 throw ParkingDataError.hashMismatch(expected: manifest.sha256, actual: digest)
             }
         } else {
             digest = manifest.sha256
         }
 
-        let decoded = try ParkingGeoJSONDecoder.decode(data)
-        let collection = ParkingFeatureCollection(features: decoded.features)
-        let index = ParkingSpatialIndex(collection: collection)
-        return ParkingDataset(
-            features: decoded.features,
-            index: index,
-            skippedPoints: decoded.skippedPoints,
-            manifest: manifest,
-            byteSize: data.count,
-            sha256: digest
-        )
+        if url.pathExtension.lowercased() == "sqlite" || manifest.format == "sqlite3_rtree_wkb" {
+            let sqliteDb = try ParkingSQLiteDatabase(url: url)
+            let features = try sqliteDb.loadAllFeatures()
+            let collection = ParkingFeatureCollection(features: features)
+            let index = ParkingSpatialIndex(collection: collection)
+            return ParkingDataset(
+                features: features,
+                index: index,
+                skippedPoints: 0,
+                manifest: manifest,
+                byteSize: data.count,
+                sha256: digest
+            )
+        } else {
+            let decoded = try ParkingGeoJSONDecoder.decode(data)
+            let collection = ParkingFeatureCollection(features: decoded.features)
+            let index = ParkingSpatialIndex(collection: collection)
+            return ParkingDataset(
+                features: decoded.features,
+                index: index,
+                skippedPoints: decoded.skippedPoints,
+                manifest: manifest,
+                byteSize: data.count,
+                sha256: digest
+            )
+        }
     }
 
     nonisolated private static func resourceURL(named name: String, bundle: Bundle) throws -> URL {
@@ -106,6 +121,14 @@ actor ParkingDataStore {
             return url
         }
         if let url = bundle.url(forResource: base, withExtension: ext) {
+            return url
+        }
+        // Check for sqlite fallback if named geojson or vice versa
+        let altExt = ext == "geojson" ? "sqlite" : "geojson"
+        let altBase = ext == "geojson" ? "parking_map" : "final_parking_map"
+        if let url = bundle.url(forResource: altBase, withExtension: altExt, subdirectory: "Data")
+            ?? bundle.url(forResource: altBase, withExtension: altExt)
+        {
             return url
         }
         throw ParkingDataError.missingResource(name)

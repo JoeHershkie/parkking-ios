@@ -47,6 +47,9 @@ struct CurbVerdictTests {
         slot: Slot,
         effectiveEndMinute: Int?,
         requestedDurationMinutes: Int,
+        crossesMidnight: Bool = false,
+        nextDaySlot: Slot? = nil,
+        nextDayEndMinute: Int? = nil,
         truncatedAtMidnight: Bool = false
     ) -> CurbVerdict {
         CurbVerdictComposer.composeCurbVerdict(
@@ -55,6 +58,9 @@ struct CurbVerdictTests {
                 slot: slot,
                 effectiveEndMinute: effectiveEndMinute,
                 requestedDurationMinutes: requestedDurationMinutes,
+                crossesMidnight: crossesMidnight,
+                nextDaySlot: nextDaySlot,
+                nextDayEndMinute: nextDayEndMinute,
                 truncatedAtMidnight: truncatedAtMidnight
             )
         )
@@ -372,5 +378,98 @@ struct CurbVerdictTests {
             includeUnknown: true
         )
         #expect(evaluation.polarity == .partial)
+    }
+
+    @Test func overnightNoParkingAcrossMidnight() {
+        // Daily 11pm - 6am No Parking
+        let overnightNoParking = Schedule(
+            status: .ok,
+            source: "11pm - 6am daily",
+            windows: [
+                TimeWindow(
+                    days: [0, 1, 2, 3, 4, 5, 6],
+                    startMinute: 23 * 60, // 1380
+                    endMinute: 6 * 60,   // 360
+                    crossesMidnight: true
+                ),
+            ]
+        )
+        let mondayNight = Slot(dayOfWeek: 1, minuteOfDay: 23 * 60, month: 5, dayOfMonth: 19, year: 2025)
+        let tuesdaySlot = Slot(dayOfWeek: 2, minuteOfDay: 0, month: 5, dayOfMonth: 20, year: 2025)
+
+        let v = verdict(
+            features: [feature("no_parking", overnightNoParking)],
+            slot: mondayNight,
+            effectiveEndMinute: 1440,
+            requestedDurationMinutes: 120, // 11pm Mon to 1am Tue
+            crossesMidnight: true,
+            nextDaySlot: tuesdaySlot,
+            nextDayEndMinute: 60
+        )
+        #expect(v.status == .notAllowed)
+        #expect(v.primaryReason == "No parking")
+    }
+
+    @Test func overnightPartialAllowanceAcrossMidnight() {
+        // Monday-only 11pm - 12am No Parking
+        let mondayNightOnly = Schedule(
+            status: .ok,
+            source: "Mon 11pm - 12am",
+            windows: [
+                TimeWindow(
+                    days: [1],
+                    startMinute: 23 * 60, // 1380
+                    endMinute: 1440,
+                    crossesMidnight: false
+                ),
+            ]
+        )
+        let mondayNight = Slot(dayOfWeek: 1, minuteOfDay: 23 * 60, month: 5, dayOfMonth: 19, year: 2025)
+        let tuesdaySlot = Slot(dayOfWeek: 2, minuteOfDay: 0, month: 5, dayOfMonth: 20, year: 2025)
+
+        let v = verdict(
+            features: [feature("no_parking", mondayNightOnly)],
+            slot: mondayNight,
+            effectiveEndMinute: 1440,
+            requestedDurationMinutes: 120, // 11pm Mon to 1am Tue
+            crossesMidnight: true,
+            nextDaySlot: tuesdaySlot,
+            nextDayEndMinute: 60
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 12:00am to 1:00am")
+        #expect(v.allowedStartMinute == 0)
+        #expect(v.allowedEndMinute == 60)
+    }
+
+    @Test func overnightPermittedWindow() {
+        // Daily Permit Parking 12am - 7am
+        let permitParking = Schedule(
+            status: .ok,
+            source: "12am - 7am daily",
+            windows: [
+                TimeWindow(
+                    days: [0, 1, 2, 3, 4, 5, 6],
+                    startMinute: 0,
+                    endMinute: 7 * 60 // 420
+                ),
+            ]
+        )
+        let mondayNight = Slot(dayOfWeek: 1, minuteOfDay: 23 * 60, month: 5, dayOfMonth: 19, year: 2025)
+        let tuesdaySlot = Slot(dayOfWeek: 2, minuteOfDay: 0, month: 5, dayOfMonth: 20, year: 2025)
+
+        let v = verdict(
+            features: [feature("restricted_periods", permitParking)],
+            slot: mondayNight,
+            effectiveEndMinute: 1440,
+            requestedDurationMinutes: 180, // 11pm Mon to 2am Tue
+            crossesMidnight: true,
+            nextDaySlot: tuesdaySlot,
+            nextDayEndMinute: 120
+        )
+        #expect(v.status == .partiallyAllowed)
+        #expect(v.headline == "Partially allowed, from 12:00am to 2:00am")
+        #expect(v.allowedStartMinute == 0)
+        #expect(v.allowedEndMinute == 120)
     }
 }

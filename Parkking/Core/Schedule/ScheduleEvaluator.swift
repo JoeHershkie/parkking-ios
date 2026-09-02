@@ -188,4 +188,86 @@ enum ScheduleEvaluator {
             unparsed: false
         )
     }
+
+    nonisolated static func evaluateQuery(
+        props: ParkingProperties,
+        query: ResolvedTimeQuery,
+        includeUnknown: Bool
+    ) -> SlotEvaluation {
+        if !query.crossesMidnight {
+            return evaluateInRange(
+                props: props,
+                slot: query.slot,
+                endMinuteOfDay: query.effectiveEndMinute,
+                includeUnknown: includeUnknown
+            )
+        }
+
+        guard let schedule = props.schedule else {
+            if !includeUnknown {
+                return SlotEvaluation(visible: false, polarity: .unknown, unparsed: true)
+            }
+            return SlotEvaluation(visible: true, polarity: .unknown, unparsed: true)
+        }
+
+        let category = props.scheduleCategory
+        if schedule.status == .failed {
+            return SlotEvaluation(
+                visible: true,
+                polarity: .unknown,
+                unparsed: true,
+                failed: true
+            )
+        }
+
+        guard let nextDaySlot = query.nextDaySlot, let nextDayEndMinute = query.nextDayEndMinute else {
+            return evaluateInRange(
+                props: props,
+                slot: query.slot,
+                endMinuteOfDay: query.effectiveEndMinute,
+                includeUnknown: includeUnknown
+            )
+        }
+
+        let isPartialSchedule = schedule.status == .partial
+
+        let overlaps1 = ScheduleMembership.overlapsMembershipInRange(
+            schedule,
+            slot: query.slot,
+            endMinute: 1440
+        )
+        let fullyCovered1 = ScheduleMembership.membershipFullyCoversRange(
+            schedule,
+            slot: query.slot,
+            endMinute: 1440
+        )
+
+        let overlaps2 = ScheduleMembership.overlapsMembershipInRange(
+            schedule,
+            slot: nextDaySlot,
+            endMinute: nextDayEndMinute
+        )
+        let fullyCovered2 = ScheduleMembership.membershipFullyCoversRange(
+            schedule,
+            slot: nextDaySlot,
+            endMinute: nextDayEndMinute
+        )
+
+        let overlaps = overlaps1 || overlaps2
+        let fullyCovered = fullyCovered1 && fullyCovered2
+
+        return SlotEvaluation(
+            visible: true,
+            polarity: polarityFromRangeOverlap(
+                category: category,
+                overlaps: overlaps,
+                fullyCovered: fullyCovered,
+                schedule: schedule,
+                maxMinutes: props.maxMinutes,
+                requestedDurationMinutes: query.requestedDurationMinutes
+            ),
+            unparsed: isPartialSchedule,
+            partial: isPartialSchedule ? true : nil
+        )
+    }
 }

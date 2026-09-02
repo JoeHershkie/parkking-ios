@@ -85,6 +85,17 @@ nonisolated struct ParkingProperties: Sendable, Equatable, Codable {
     var centrelineConstruction: String?
     var mergeDroppedComponent: Bool?
 
+    // Pipeline enhancement data fields
+    var isSnowRoute: Bool?
+    var streetcarCorridor: Bool?
+    var formerMunicipality: String?
+    var regionalWinterRule: String?
+    var permitAreaID: String?
+    var permitParkingActive: Bool?
+    var hasHydrant: Bool?
+    var hydrantCount: Int?
+    var hydrantSetbackM: Double?
+
     // Client-only enrichment fields
     var polarity: FilterPolarity?
     var visible: Bool?
@@ -115,6 +126,15 @@ nonisolated struct ParkingProperties: Sendable, Equatable, Codable {
         case roadEdgeObjectIDs = "road_edge_object_ids"
         case centrelineConstruction = "centreline_construction"
         case mergeDroppedComponent = "merge_dropped_component"
+        case isSnowRoute = "is_snow_route"
+        case streetcarCorridor = "streetcar_corridor"
+        case formerMunicipality = "former_municipality"
+        case regionalWinterRule = "regional_winter_rule"
+        case permitAreaID = "permit_area_id"
+        case permitParkingActive = "permit_parking_active"
+        case hasHydrant = "has_hydrant"
+        case hydrantCount = "hydrant_count"
+        case hydrantSetbackM = "hydrant_setback_m"
         case polarity = "_polarity"
         case visible = "_visible"
         case unparsed = "_unparsed"
@@ -145,6 +165,15 @@ nonisolated struct ParkingProperties: Sendable, Equatable, Codable {
         roadEdgeObjectIDs: [Int]? = nil,
         centrelineConstruction: String? = nil,
         mergeDroppedComponent: Bool? = nil,
+        isSnowRoute: Bool? = nil,
+        streetcarCorridor: Bool? = nil,
+        formerMunicipality: String? = nil,
+        regionalWinterRule: String? = nil,
+        permitAreaID: String? = nil,
+        permitParkingActive: Bool? = nil,
+        hasHydrant: Bool? = nil,
+        hydrantCount: Int? = nil,
+        hydrantSetbackM: Double? = nil,
         polarity: FilterPolarity? = nil,
         visible: Bool? = nil,
         unparsed: Bool? = nil,
@@ -173,6 +202,15 @@ nonisolated struct ParkingProperties: Sendable, Equatable, Codable {
         self.roadEdgeObjectIDs = roadEdgeObjectIDs
         self.centrelineConstruction = centrelineConstruction
         self.mergeDroppedComponent = mergeDroppedComponent
+        self.isSnowRoute = isSnowRoute
+        self.streetcarCorridor = streetcarCorridor
+        self.formerMunicipality = formerMunicipality
+        self.regionalWinterRule = regionalWinterRule
+        self.permitAreaID = permitAreaID
+        self.permitParkingActive = permitParkingActive
+        self.hasHydrant = hasHydrant
+        self.hydrantCount = hydrantCount
+        self.hydrantSetbackM = hydrantSetbackM
         self.polarity = polarity
         self.visible = visible
         self.unparsed = unparsed

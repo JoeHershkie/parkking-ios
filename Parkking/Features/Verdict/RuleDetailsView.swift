@@ -53,6 +53,47 @@ struct RuleDetailsView: View {
                 }
             }
 
+            // Pipeline Data Badges (Permit Area, Hydrant, Snow Route, Streetcar)
+            if props.permitAreaID != nil || props.hasHydrant == true || props.isSnowRoute == true || props.streetcarCorridor == true {
+                FlowLayout(spacing: 6) {
+                    if let permitID = props.permitAreaID {
+                        Label("Permit Area \(permitID)", systemImage: "parkingsign.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.purple.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.purple)
+                    }
+
+                    if props.hasHydrant == true {
+                        Label("3m Hydrant Setback", systemImage: "flame.fill")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.red.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.red)
+                    }
+
+                    if props.isSnowRoute == true {
+                        Label("Snow Route", systemImage: "snowflake")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.blue.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.blue)
+                    }
+
+                    if props.streetcarCorridor == true {
+                        Label("Streetcar Corridor", systemImage: "tram.fill")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color.orange)
+                    }
+                }
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Bylaw text")
@@ -85,6 +126,12 @@ struct RuleDetailsView: View {
                     .background(.background, in: RoundedRectangle(cornerRadius: 8))
             }
 
+            if let regionalRule = props.regionalWinterRule {
+                Text("\(props.formerMunicipality ?? "Regional") Winter Rule: \(regionalRule)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.indigo)
+            }
+
             ForEach(
                 Array(ScheduleDisplay.scheduleStatusHints(props.schedule).enumerated()),
                 id: \.offset
@@ -102,5 +149,48 @@ struct RuleDetailsView: View {
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Simple flowing horizontal tag layout
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > width, currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + spacing
+                lineHeight = 0
+            }
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+
+        return CGSize(width: width, height: currentY + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > bounds.maxX, currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += lineHeight + spacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(size))
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
     }
 }
