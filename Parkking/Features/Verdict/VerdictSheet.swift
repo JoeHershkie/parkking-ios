@@ -132,6 +132,39 @@ struct VerdictSheet: View {
                 .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 .fixedSize(horizontal: false, vertical: true)
         }
+
+        if verdict.permitAreaID != nil || verdict.hasHydrant == true || verdict.isSnowRoute == true {
+            HStack(spacing: 8) {
+                if let permitID = verdict.permitAreaID {
+                    Label("Permit Area \(permitID)", systemImage: "parkingsign.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.purple.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.purple)
+                }
+
+                if verdict.hasHydrant == true {
+                    Label("3m Hydrant Setback", systemImage: "flame.fill")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.red.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.red)
+                }
+
+                if verdict.isSnowRoute == true {
+                    Label("Snow Route", systemImage: "snowflake")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.blue.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.blue)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
     }
 
     nonisolated static func rulesToDisplay(_ verdict: CurbVerdict) -> [ContributingRule] {

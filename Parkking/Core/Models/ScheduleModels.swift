@@ -4,6 +4,7 @@ nonisolated enum ScheduleStatus: String, Sendable, Codable, Equatable {
     case anytime
     case ok
     case partial
+    case conditional
     case failed
     case unknown
 
@@ -55,19 +56,22 @@ nonisolated struct Slot: Sendable, Hashable, Codable, Equatable {
     var month: Int
     var dayOfMonth: Int
     var year: Int?
+    var majorSnowstorm: Bool?
 
     nonisolated init(
         dayOfWeek: Int,
         minuteOfDay: Int,
         month: Int,
         dayOfMonth: Int,
-        year: Int? = nil
+        year: Int? = nil,
+        majorSnowstorm: Bool? = nil
     ) {
         self.dayOfWeek = dayOfWeek
         self.minuteOfDay = minuteOfDay
         self.month = month
         self.dayOfMonth = dayOfMonth
         self.year = year
+        self.majorSnowstorm = majorSnowstorm
     }
 }
 
@@ -158,6 +162,8 @@ nonisolated struct Schedule: Sendable, Hashable, Equatable {
     var calendar: ScheduleCalendar?
     var flags: ScheduleFlags?
     var inverted: Bool?
+    var condition: String?
+    var isSnowRoute: Bool?
     var unparsedClauses: [String]?
 
     nonisolated init(
@@ -168,6 +174,8 @@ nonisolated struct Schedule: Sendable, Hashable, Equatable {
         calendar: ScheduleCalendar? = nil,
         flags: ScheduleFlags? = nil,
         inverted: Bool? = nil,
+        condition: String? = nil,
+        isSnowRoute: Bool? = nil,
         unparsedClauses: [String]? = nil
     ) {
         self.v = v
@@ -177,6 +185,8 @@ nonisolated struct Schedule: Sendable, Hashable, Equatable {
         self.calendar = calendar
         self.flags = flags
         self.inverted = inverted
+        self.condition = condition
+        self.isSnowRoute = isSnowRoute
         self.unparsedClauses = unparsedClauses
     }
 }
@@ -303,6 +313,8 @@ extension Schedule: Codable {
         case calendar
         case flags
         case inverted
+        case condition
+        case isSnowRoute = "is_snow_route"
         case unparsedClauses
     }
 
@@ -316,6 +328,8 @@ extension Schedule: Codable {
         calendar = try container.decodeIfPresent(ScheduleCalendar.self, forKey: .calendar)
         flags = try container.decodeIfPresent(ScheduleFlags.self, forKey: .flags)
         inverted = try container.decodeIfPresent(Bool.self, forKey: .inverted)
+        condition = try container.decodeIfPresent(String.self, forKey: .condition)
+        isSnowRoute = try container.decodeIfPresent(Bool.self, forKey: .isSnowRoute)
         unparsedClauses = try container.decodeIfPresent([String].self, forKey: .unparsedClauses)
     }
 
@@ -328,6 +342,8 @@ extension Schedule: Codable {
         try container.encodeIfPresent(calendar, forKey: .calendar)
         try container.encodeIfPresent(flags, forKey: .flags)
         try container.encodeIfPresent(inverted, forKey: .inverted)
+        try container.encodeIfPresent(condition, forKey: .condition)
+        try container.encodeIfPresent(isSnowRoute, forKey: .isSnowRoute)
         try container.encodeIfPresent(unparsedClauses, forKey: .unparsedClauses)
     }
 }
@@ -344,6 +360,8 @@ extension Schedule {
             calendar: ScheduleJSON.calendar(obj["calendar"]),
             flags: ScheduleJSON.flags(obj["flags"]),
             inverted: ScheduleJSON.boolValue(obj["inverted"]),
+            condition: ScheduleJSON.stringValue(obj["condition"]),
+            isSnowRoute: ScheduleJSON.boolValue(obj["is_snow_route"]),
             unparsedClauses: ScheduleJSON.stringList(obj["unparsedClauses"])
         )
     }

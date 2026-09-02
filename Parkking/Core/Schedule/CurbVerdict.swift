@@ -62,6 +62,11 @@ struct CurbVerdict: Sendable, Equatable {
     var sideDisplay: String?
     var allowedStartMinute: Int?
     var allowedEndMinute: Int?
+    var permitAreaID: String?
+    var hasHydrant: Bool?
+    var isSnowRoute: Bool?
+    var regionalWinterRule: String?
+    var formerMunicipality: String?
 
     nonisolated init(
         status: CurbVerdictStatus,
@@ -77,7 +82,12 @@ struct CurbVerdict: Sendable, Equatable {
         side: String?,
         sideDisplay: String?,
         allowedStartMinute: Int? = nil,
-        allowedEndMinute: Int? = nil
+        allowedEndMinute: Int? = nil,
+        permitAreaID: String? = nil,
+        hasHydrant: Bool? = nil,
+        isSnowRoute: Bool? = nil,
+        regionalWinterRule: String? = nil,
+        formerMunicipality: String? = nil
     ) {
         self.status = status
         self.headline = headline
@@ -93,6 +103,11 @@ struct CurbVerdict: Sendable, Equatable {
         self.sideDisplay = sideDisplay
         self.allowedStartMinute = allowedStartMinute
         self.allowedEndMinute = allowedEndMinute
+        self.permitAreaID = permitAreaID
+        self.hasHydrant = hasHydrant
+        self.isSnowRoute = isSnowRoute
+        self.regionalWinterRule = regionalWinterRule
+        self.formerMunicipality = formerMunicipality
     }
 }
 
@@ -372,6 +387,12 @@ enum CurbVerdictComposer {
         let midnightWarning =
             options.truncatedAtMidnight ? ParkingTimeQuery.midnightWarning : nil
 
+        let permitAreaID = options.features.compactMap(\.properties.permitAreaID).first
+        let hasHydrant = options.features.contains { $0.properties.hasHydrant == true } ? true : nil
+        let isSnowRoute = options.features.contains { $0.properties.isSnowRoute == true } ? true : nil
+        let regionalWinterRule = options.features.compactMap(\.properties.regionalWinterRule).first
+        let formerMunicipality = options.features.compactMap(\.properties.formerMunicipality).first
+
         if options.features.isEmpty {
             return CurbVerdict(
                 status: .likelyAllowed,
@@ -387,7 +408,12 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
@@ -593,7 +619,12 @@ enum CurbVerdictComposer {
                         side: options.side,
                         sideDisplay: options.sideDisplay,
                         allowedStartMinute: startAbs % 1440,
-                        allowedEndMinute: endAbs % 1440
+                        allowedEndMinute: endAbs % 1440,
+                        permitAreaID: permitAreaID,
+                        hasHydrant: hasHydrant,
+                        isSnowRoute: isSnowRoute,
+                        regionalWinterRule: regionalWinterRule,
+                        formerMunicipality: formerMunicipality
                     )
                 }
             }
@@ -614,7 +645,12 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
@@ -632,7 +668,12 @@ enum CurbVerdictComposer {
                 signageReminder: signageReminder,
                 street: options.street,
                 side: options.side,
-                sideDisplay: options.sideDisplay
+                sideDisplay: options.sideDisplay,
+                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
             )
         }
 
@@ -648,7 +689,12 @@ enum CurbVerdictComposer {
             signageReminder: signageReminder,
             street: options.street,
             side: options.side,
-            sideDisplay: options.sideDisplay
+            sideDisplay: options.sideDisplay,
+            permitAreaID: permitAreaID,
+            hasHydrant: hasHydrant,
+            isSnowRoute: isSnowRoute,
+            regionalWinterRule: regionalWinterRule,
+            formerMunicipality: formerMunicipality
         )
     }
 
