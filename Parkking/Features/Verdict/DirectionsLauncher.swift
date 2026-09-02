@@ -33,7 +33,7 @@ enum NavigationApp: String, CaseIterable, Identifiable, Sendable {
 
         switch self {
         case .appleMaps:
-            let mapItem = MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
             mapItem.name = name ?? "Parking destination"
             mapItem.openInMaps(launchOptions: [
                 MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving

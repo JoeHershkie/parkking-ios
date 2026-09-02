@@ -54,7 +54,6 @@ struct ResolvedPlace: Equatable {
 }
 
 enum MapKitSearchConfiguration {
-    nonisolated static let regionPriority = MKLocalSearchRegionPriority.required
     nonisolated static let completerResultTypes: MKLocalSearchCompleter.ResultType = [
         .address,
         .pointOfInterest,
@@ -67,14 +66,18 @@ enum MapKitSearchConfiguration {
     @MainActor
     static func apply(to completer: MKLocalSearchCompleter) {
         completer.region = ParkingMapConstants.parkingCoverageRegion
-        completer.regionPriority = regionPriority
+        if #available(iOS 18.0, *) {
+            completer.regionPriority = .required
+        }
         completer.resultTypes = completerResultTypes
     }
 
     @MainActor
     static func apply(to request: MKLocalSearch.Request) {
         request.region = ParkingMapConstants.parkingCoverageRegion
-        request.regionPriority = regionPriority
+        if #available(iOS 18.0, *) {
+            request.regionPriority = .required
+        }
         request.resultTypes = requestResultTypes
     }
 
@@ -150,7 +153,7 @@ final class MapKitSearchClient: NSObject, PlaceSearching, MKLocalSearchCompleter
         guard let item = response.mapItems.first else {
             throw MapKitSearchError.noCoordinate
         }
-        let coordinate = try MapKitSearchConfiguration.validatedCoordinate(item.location.coordinate)
+        let coordinate = try MapKitSearchConfiguration.validatedCoordinate(item.placemark.coordinate)
         let title = completion.title.isEmpty
             ? (item.name ?? completion.subtitle)
             : completion.title
