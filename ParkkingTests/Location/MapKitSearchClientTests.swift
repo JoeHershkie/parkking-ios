@@ -10,7 +10,9 @@ struct MapKitSearchClientTests {
     func searchUsesRequiredTorontoRegion() {
         let completer = MKLocalSearchCompleter()
         MapKitSearchConfiguration.apply(to: completer)
-        #expect(completer.regionPriority == .required)
+        if #available(iOS 18.0, *) {
+            #expect(completer.regionPriority == .required)
+        }
         #expect(completer.resultTypes.contains(.address))
         #expect(completer.resultTypes.contains(.pointOfInterest))
         #expect(
@@ -19,7 +21,9 @@ struct MapKitSearchClientTests {
 
         let request = MKLocalSearch.Request()
         MapKitSearchConfiguration.apply(to: request)
-        #expect(request.regionPriority == .required)
+        if #available(iOS 18.0, *) {
+            #expect(request.regionPriority == .required)
+        }
         #expect(request.resultTypes.contains(.address))
         #expect(request.resultTypes.contains(.pointOfInterest))
     }
