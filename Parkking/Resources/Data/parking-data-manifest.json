@@ -3,10 +3,10 @@
   "format": "sqlite3_rtree_wkb",
   "schema_version": 1,
   "pipeline_version": "0.1.0",
-  "generated_at": "2026-09-02T17:10:41.760273+00:00",
-  "sha256": "e30eb8fa91b9b35356bc68b67aa2defd88c933b39020573f41c6d06fdae23e28",
-  "file_size_bytes": 15212544,
-  "feature_count": 21424,
+  "generated_at": "2026-09-02T17:31:00.539756+00:00",
+  "sha256": "2c5a9af95b0d0559d1d889964f5d9f2da1144729266e1d3b0d6da23dfacd3ece",
+  "file_size_bytes": 22355968,
+  "feature_count": 24669,
   "bounding_box": {
     "min_lng": -79.63910645627018,
     "min_lat": 43.58649351468579,
@@ -14,19 +14,19 @@
     "max_lat": 43.84803502740176
   },
   "metadata": {
-    "generated_at": "2026-08-20T03:53:34.318707+00:00",
+    "generated_at": "2026-09-02T17:30:59.655411+00:00",
     "pipeline_version": "0.1.0",
-    "feature_count": 21424,
-    "input_row_count": 22763,
-    "tcl_streets_mtime": "2026-06-19T21:36:35.656097+00:00",
-    "tcl_intersections_mtime": "2026-06-19T21:36:35.685015+00:00",
+    "feature_count": 24669,
+    "input_row_count": 26031,
+    "tcl_streets_mtime": "2026-09-01T06:05:24.409906+00:00",
+    "tcl_intersections_mtime": "2026-09-01T06:05:24.969133+00:00",
     "road_edges": {
-      "source": "/Users/joey/Documents/Develop/Projects/parking-pipeline/pipeline/data/topographic_road_edges.gpkg",
+      "source": "/Users/joey/Developer/projects/parkking/parkking-pipeline/data/topographic_road_edges.gpkg",
       "crs": "EPSG:32617",
       "manifest": {
         "service_url": "https://gis.toronto.ca/arcgis/rest/services/cot_geospatial3/FeatureServer/3",
         "query": "SUBTYPE_DESC IN ('Road Edge','Intersection')",
-        "fetch_time": "2026-08-20T02:51:56.467832+00:00",
+        "fetch_time": "2026-09-02T05:42:22.918665+00:00",
         "feature_counts": {
           "Road Edge": 34445,
           "Intersection": 19475,
@@ -46,11 +46,11 @@
     },
     "curb_geometry": {
       "methods": {
-        "road_edge": 18152,
-        "offset_fallback": 1708,
-        "centerline_unresolved": 1564
+        "road_edge": 20697,
+        "offset_fallback": 2384,
+        "centerline_unresolved": 1588
       },
-      "mean_confidence": 0.7872848108323567,
+      "mean_confidence": 0.78843935390246,
       "conservative_global_offset_m": 3.5
     }
   }

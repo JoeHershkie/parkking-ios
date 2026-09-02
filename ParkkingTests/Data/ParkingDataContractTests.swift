@@ -10,9 +10,9 @@ struct ParkingDataContractTests {
     func manifestMatchesPinnedValues() throws {
         let manifest = try ParkingDataManifest.load(from: .main)
         #expect(manifest.scheduleSchemaVersion == 1)
-        #expect(manifest.featureCount == 21_424)
-        #expect(manifest.byteSize == 15_212_544)
-        #expect(manifest.sha256 == "e30eb8fa91b9b35356bc68b67aa2defd88c933b39020573f41c6d06fdae23e28")
+        #expect(manifest.featureCount == 24_669)
+        #expect(manifest.byteSize == 22_355_968)
+        #expect(manifest.sha256 == "2c5a9af95b0d0559d1d889964f5d9f2da1144729266e1d3b0d6da23dfacd3ece")
         #expect(manifest.artifact == "parking_map.sqlite")
         #expect(manifest.format == "sqlite3_rtree_wkb")
     }
@@ -22,7 +22,7 @@ struct ParkingDataContractTests {
         let dataset = try ParkingDataStore.loadDataset(bundle: .main, validateHash: true)
         #expect(dataset.byteSize == dataset.manifest.byteSize)
         #expect(dataset.sha256 == dataset.manifest.sha256)
-        #expect(dataset.features.count == 21_424)
+        #expect(dataset.features.count == 24_669)
         #expect(dataset.skippedPoints == 0)
         #expect(dataset.index.features.count == dataset.features.count)
 
