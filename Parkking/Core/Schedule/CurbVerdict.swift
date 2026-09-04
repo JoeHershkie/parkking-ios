@@ -62,7 +62,6 @@ struct CurbVerdict: Sendable, Equatable {
     var sideDisplay: String?
     var allowedStartMinute: Int?
     var allowedEndMinute: Int?
-    var permitAreaID: String?
     var hasHydrant: Bool?
     var isSnowRoute: Bool?
     var regionalWinterRule: String?
@@ -83,7 +82,6 @@ struct CurbVerdict: Sendable, Equatable {
         sideDisplay: String?,
         allowedStartMinute: Int? = nil,
         allowedEndMinute: Int? = nil,
-        permitAreaID: String? = nil,
         hasHydrant: Bool? = nil,
         isSnowRoute: Bool? = nil,
         regionalWinterRule: String? = nil,
@@ -103,7 +101,6 @@ struct CurbVerdict: Sendable, Equatable {
         self.sideDisplay = sideDisplay
         self.allowedStartMinute = allowedStartMinute
         self.allowedEndMinute = allowedEndMinute
-        self.permitAreaID = permitAreaID
         self.hasHydrant = hasHydrant
         self.isSnowRoute = isSnowRoute
         self.regionalWinterRule = regionalWinterRule
@@ -203,8 +200,9 @@ enum CurbVerdictComposer {
         switch category {
         case "no_stopping": return .noStopping
         case "no_standing": return .noStanding
-        case "no_parking": return .noParking
+        case "no_parking", "winter_maintenance", "snow_route", "snow_streetcar": return .noParking
         case "restricted_periods": return .permittedWindow
+        case "commercial_loading", "delivery_loading", "passenger_loading", "car_share", "ev_charging", "taxicab_stand": return .noParking
         default: return nil
         }
     }
@@ -387,7 +385,6 @@ enum CurbVerdictComposer {
         let midnightWarning =
             options.truncatedAtMidnight ? ParkingTimeQuery.midnightWarning : nil
 
-        let permitAreaID = options.features.compactMap(\.properties.permitAreaID).first
         let hasHydrant = options.features.contains { $0.properties.hasHydrant == true } ? true : nil
         let isSnowRoute = options.features.contains { $0.properties.isSnowRoute == true } ? true : nil
         let regionalWinterRule = options.features.compactMap(\.properties.regionalWinterRule).first
@@ -409,7 +406,6 @@ enum CurbVerdictComposer {
                 street: options.street,
                 side: options.side,
                 sideDisplay: options.sideDisplay,
-                permitAreaID: permitAreaID,
                 hasHydrant: hasHydrant,
                 isSnowRoute: isSnowRoute,
                 regionalWinterRule: regionalWinterRule,
@@ -450,14 +446,14 @@ enum CurbVerdictComposer {
             )
         }
 
-        let hasActivePermit = contributingRules.contains { $0.kind == .allowed }
+        let hasAllowedWindow = contributingRules.contains { $0.kind == .allowed }
         let normalizedRules: [ContributingRule]
-        if hasActivePermit {
+        if hasAllowedWindow {
             normalizedRules = contributingRules.map { rule in
                 if rule.kind == .permittedWindow || rule.kind == .noParking {
                     var updated = rule
                     updated.kind = .inactive
-                    updated.reason = "Permitted parking rule covers this interval."
+                    updated.reason = "Permitted window rule covers this interval."
                     return updated
                 }
                 return rule
@@ -500,7 +496,8 @@ enum CurbVerdictComposer {
                         minuteOfDay: absoluteMinute,
                         month: options.slot.month,
                         dayOfMonth: options.slot.dayOfMonth,
-                        year: options.slot.year
+                        year: options.slot.year,
+                        majorSnowstorm: options.slot.majorSnowstorm
                     )
                 } else {
                     let m2 = absoluteMinute - 1440
@@ -510,7 +507,8 @@ enum CurbVerdictComposer {
                             minuteOfDay: m2,
                             month: nextDaySlot.month,
                             dayOfMonth: nextDaySlot.dayOfMonth,
-                            year: nextDaySlot.year
+                            year: nextDaySlot.year,
+                            majorSnowstorm: options.slot.majorSnowstorm
                         )
                     } else {
                         return Slot(
@@ -518,7 +516,8 @@ enum CurbVerdictComposer {
                             minuteOfDay: m2,
                             month: options.slot.month,
                             dayOfMonth: options.slot.dayOfMonth,
-                            year: options.slot.year
+                            year: options.slot.year,
+                            majorSnowstorm: options.slot.majorSnowstorm
                         )
                     }
                 }
@@ -538,13 +537,13 @@ enum CurbVerdictComposer {
                         requestedDurationMinutes: offset + 1
                     )
                 }
-                let permitM = rulesM.contains { $0.kind == .allowed }
-                let normalizedM = permitM
+                let allowedM = rulesM.contains { $0.kind == .allowed }
+                let normalizedM = allowedM
                     ? rulesM.map { rule in
                         if rule.kind == .permittedWindow || rule.kind == .noParking {
                             var updated = rule
                             updated.kind = .inactive
-                            updated.reason = "Permitted parking rule covers this interval."
+                            updated.reason = "Permitted window rule covers this interval."
                             return updated
                         }
                         return rule
@@ -569,13 +568,13 @@ enum CurbVerdictComposer {
                         requestedDurationMinutes: offset + 1
                     )
                 }
-                let permitM = rulesM.contains { $0.kind == .allowed }
-                let normalizedM = permitM
+                let allowedM = rulesM.contains { $0.kind == .allowed }
+                let normalizedM = allowedM
                     ? rulesM.map { rule in
                         if rule.kind == .permittedWindow || rule.kind == .noParking {
                             var updated = rule
                             updated.kind = .inactive
-                            updated.reason = "Permitted parking rule covers this interval."
+                            updated.reason = "Permitted window rule covers this interval."
                             return updated
                         }
                         return rule
@@ -620,7 +619,6 @@ enum CurbVerdictComposer {
                         sideDisplay: options.sideDisplay,
                         allowedStartMinute: startAbs % 1440,
                         allowedEndMinute: endAbs % 1440,
-                        permitAreaID: permitAreaID,
                         hasHydrant: hasHydrant,
                         isSnowRoute: isSnowRoute,
                         regionalWinterRule: regionalWinterRule,
@@ -646,7 +644,6 @@ enum CurbVerdictComposer {
                 street: options.street,
                 side: options.side,
                 sideDisplay: options.sideDisplay,
-                permitAreaID: permitAreaID,
                 hasHydrant: hasHydrant,
                 isSnowRoute: isSnowRoute,
                 regionalWinterRule: regionalWinterRule,
@@ -669,7 +666,39 @@ enum CurbVerdictComposer {
                 street: options.street,
                 side: options.side,
                 sideDisplay: options.sideDisplay,
-                permitAreaID: permitAreaID,
+                hasHydrant: hasHydrant,
+                isSnowRoute: isSnowRoute,
+                regionalWinterRule: regionalWinterRule,
+                formerMunicipality: formerMunicipality
+            )
+        }
+
+        let hasActiveNonWinterRule = normalizedRules.contains { rule in
+            if rule.kind == .allowed { return true }
+            if rule.kind == .inactive {
+                let isWinterSnow = ScheduleEvaluator.isSeasonalWinterOrSnowRule(
+                    props: rule.feature.properties,
+                    schedule: rule.feature.properties.schedule ?? Schedule(status: .unknown, source: "")
+                )
+                return !isWinterSnow
+            }
+            return false
+        }
+
+        if !hasActiveNonWinterRule && !normalizedRules.isEmpty {
+            return CurbVerdict(
+                status: .likelyAllowed,
+                headline: headlines[.likelyAllowed]!,
+                primaryReason: "No active restriction for this interval.",
+                contributingRules: normalizedRules,
+                activeRestrictions: [],
+                uncertaintyNotes: [],
+                maxStayWarning: nil,
+                midnightWarning: midnightWarning,
+                signageReminder: signageReminder,
+                street: options.street,
+                side: options.side,
+                sideDisplay: options.sideDisplay,
                 hasHydrant: hasHydrant,
                 isSnowRoute: isSnowRoute,
                 regionalWinterRule: regionalWinterRule,
@@ -690,7 +719,6 @@ enum CurbVerdictComposer {
             street: options.street,
             side: options.side,
             sideDisplay: options.sideDisplay,
-            permitAreaID: permitAreaID,
             hasHydrant: hasHydrant,
             isSnowRoute: isSnowRoute,
             regionalWinterRule: regionalWinterRule,

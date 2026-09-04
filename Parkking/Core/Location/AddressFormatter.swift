@@ -192,4 +192,63 @@ enum AddressFormatter {
         ]
         return tokens.first(where: { !typeOrDirSet.contains($0) })
     }
+
+    /// Checks if a string looks like a coordinate or generic placeholder.
+    nonisolated static func isCoordinateOrGeneric(_ text: String?) -> Bool {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            return true
+        }
+        if text == "Current location" || text == "Dropped Pin" || text.contains("°") {
+            return true
+        }
+        let parts = text.split(separator: ",")
+        if parts.count == 2 {
+            let p0 = parts[0].trimmingCharacters(in: .whitespaces)
+            let p1 = parts[1].trimmingCharacters(in: .whitespaces)
+            if Double(p0) != nil && Double(p1) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Checks if a string contains tokens indicating a street name or address.
+    nonisolated static func isAddressLike(_ text: String?) -> Bool {
+        guard let text, !isCoordinateOrGeneric(text) else { return false }
+        let tokens = normalizeStreetTokens(text)
+        guard !tokens.isEmpty else { return false }
+        let streetTypes: Set<String> = [
+            "st", "ave", "rd", "blvd", "dr", "cres", "pl", "ct", "ln", "way", "ter", "pkwy", "sq", "cir", "trl", "hwy"
+        ]
+        return tokens.contains(where: { streetTypes.contains($0) })
+    }
+
+    /// Extracts a candidate street name from a title and/or subtitle.
+    nonisolated static func extractStreetName(title: String?, subtitle: String? = nil) -> String? {
+        if let title, !isCoordinateOrGeneric(title), isAddressLike(title) {
+            return streetNameWithoutNumber(from: title)
+        }
+        if let subtitle, !isCoordinateOrGeneric(subtitle), isAddressLike(subtitle) {
+            return streetNameWithoutNumber(from: subtitle)
+        }
+        return nil
+    }
+
+    /// Removes leading house / building numbers from an address string to leave the street name.
+    /// E.g. "100 Queen St W" -> "Queen St W"
+    /// E.g. "12 Barse Street" -> "Barse Street"
+    /// E.g. "551A Fairlawn Ave" -> "Fairlawn Ave"
+    nonisolated static func streetNameWithoutNumber(from address: String) -> String {
+        guard let cleaned = cleanAddress(address) ?? (address.isEmpty ? nil : address) else {
+            return address
+        }
+        let pattern = #"^\s*\d+[\w\-/]*\s+"#
+        if let range = cleaned.range(of: pattern, options: .regularExpression) {
+            let result = String(cleaned[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if !result.isEmpty {
+                return result
+            }
+        }
+        return cleaned
+    }
 }

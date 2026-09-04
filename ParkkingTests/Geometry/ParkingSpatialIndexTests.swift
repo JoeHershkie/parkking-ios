@@ -181,6 +181,93 @@ struct EnrichFeaturesSubsetTests {
         #expect(enriched.features[0].properties.polarity == .restricted)
         #expect(enriched.features[0].properties.severity == 2)
     }
+
+    @Test("suppresses inactive winter rule from enriched features so no line renders")
+    func suppressesInactiveWinterRuleFromEnrichedFeatures() {
+        let winterFeature = ParkingFeature(
+            id: FeatureID("winter_devon"),
+            geometry: .lineString(coordinates: [[-79.4, 43.65], [-79.401, 43.651]]),
+            properties: ParkingProperties(
+                highway: "Devon Rd",
+                rule: "Anytime, from Dec. 1 of one year to Mar. 31 of the next following year, inclusive",
+                scheduleCategory: "no_parking",
+                side: "North",
+                schedule: Schedule(
+                    v: 1,
+                    status: .ok,
+                    source: "Anytime, from Dec. 1 of one year to Mar. 31 of the next following year, inclusive",
+                    windows: [
+                        TimeWindow(
+                            days: [0, 1, 2, 3, 4, 5, 6],
+                            startMinute: 0,
+                            endMinute: 1439,
+                            calendar: ScheduleCalendar(
+                                monthRanges: [CalendarMonthRange(startMonth: 12, startDay: 1, endMonth: 3, endDay: 31)]
+                            )
+                        )
+                    ]
+                )
+            )
+        )
+
+        // Slot in May (outside winter)
+        let summerSlot = Slot(dayOfWeek: 2, minuteOfDay: 900, month: 5, dayOfMonth: 20, year: 2025)
+        let enrichedSummer = ParkingSpatialIndex.enrichFeaturesSubset(
+            [winterFeature],
+            slot: summerSlot,
+            includeUnknown: true
+        )
+        #expect(enrichedSummer.features.isEmpty)
+
+        // Slot in January (inside winter)
+        let winterSlot = Slot(dayOfWeek: 2, minuteOfDay: 900, month: 1, dayOfMonth: 15, year: 2025)
+        let enrichedWinter = ParkingSpatialIndex.enrichFeaturesSubset(
+            [winterFeature],
+            slot: winterSlot,
+            includeUnknown: true
+        )
+        #expect(enrichedWinter.features.count == 1)
+        #expect(enrichedWinter.features[0].properties.polarity == .restricted)
+    }
+
+    @Test("suppresses inactive snow route from enriched features when emergency not declared")
+    func suppressesInactiveSnowRouteFromEnrichedFeatures() {
+        let snowFeature = ParkingFeature(
+            id: FeatureID("snow_danforth"),
+            geometry: .lineString(coordinates: [[-79.4, 43.65], [-79.401, 43.651]]),
+            properties: ParkingProperties(
+                highway: "Danforth Ave",
+                rule: "Major Snow Storm Conditions",
+                scheduleCategory: "snow_route",
+                side: "North",
+                schedule: Schedule(
+                    v: 1,
+                    status: .conditional,
+                    source: "Major Snow Storm Conditions",
+                    condition: "major_snowstorm_declared",
+                    isSnowRoute: true
+                ),
+                isSnowRoute: true
+            )
+        )
+
+        let calmSlot = Slot(dayOfWeek: 2, minuteOfDay: 900, month: 5, dayOfMonth: 20, majorSnowstorm: false)
+        let enrichedCalm = ParkingSpatialIndex.enrichFeaturesSubset(
+            [snowFeature],
+            slot: calmSlot,
+            includeUnknown: true
+        )
+        #expect(enrichedCalm.features.isEmpty)
+
+        let declaredSlot = Slot(dayOfWeek: 2, minuteOfDay: 900, month: 5, dayOfMonth: 20, majorSnowstorm: true)
+        let enrichedDeclared = ParkingSpatialIndex.enrichFeaturesSubset(
+            [snowFeature],
+            slot: declaredSlot,
+            includeUnknown: true
+        )
+        #expect(enrichedDeclared.features.count == 1)
+        #expect(enrichedDeclared.features[0].properties.polarity == FilterPolarity.restricted)
+    }
 }
 
 @MainActor

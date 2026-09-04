@@ -20,12 +20,33 @@ struct TimeSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 8) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center) {
+                    Text("Custom time / duration")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Button {
+                        applyCustomQuery()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Done")
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("From")
-                            .font(.body.weight(.medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
 
                         DatePicker(
@@ -35,9 +56,11 @@ struct TimeSheet: View {
                         )
                         .labelsHidden()
                         .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
+                    }
 
-                        Text("to")
-                            .font(.body.weight(.medium))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("To")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
 
                         DatePicker(
@@ -47,12 +70,13 @@ struct TimeSheet: View {
                         )
                         .labelsHidden()
                         .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
-
-                        Spacer(minLength: 0)
                     }
-                    .frame(minHeight: 44)
 
-                    HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Date")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
                         DatePicker(
                             "Date",
                             selection: customDateBinding,
@@ -60,48 +84,22 @@ struct TimeSheet: View {
                         )
                         .labelsHidden()
                         .environment(\.timeZone, ParkingTimeQuery.torontoTimeZone)
-
-                        Spacer(minLength: 0)
-
-                        Button("Apply") {
-                            applyCustomQuery()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .fontWeight(.semibold)
-                        .accessibilityLabel("Apply custom time")
                     }
-                    .frame(minHeight: 44)
+
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
             }
-            .navigationTitle("Custom time / duration")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, height: 44)
-                            .background(Color(uiColor: .tertiarySystemFill), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close")
-                }
+        }
+        .onAppear {
+            var initial = query
+            if initial.mode == .now {
+                let slot = ParkingTimeQuery.slotFromDate(Date(), timeZone: ParkingTimeQuery.torontoTimeZone)
+                initial.date = ParkingTimeQuery.slotToDateString(slot)
+                initial.startMinute = slot.minuteOfDay
+                initial.mode = .custom
             }
-            .onAppear {
-                var initial = query
-                if initial.mode == .now {
-                    let slot = ParkingTimeQuery.slotFromDate(Date(), timeZone: ParkingTimeQuery.torontoTimeZone)
-                    initial.date = ParkingTimeQuery.slotToDateString(slot)
-                    initial.startMinute = slot.minuteOfDay
-                    initial.mode = .custom
-                }
-                draft = initial
-            }
+            draft = initial
         }
     }
 

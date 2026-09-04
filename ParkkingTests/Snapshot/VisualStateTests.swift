@@ -73,4 +73,11 @@ struct VisualStateTests {
         #expect(type(of: view) == TimeSheet.self)
         #expect(query.mode == .now)
     }
+
+    @Test("SettingsSheet view instantiation")
+    func settingsSheetInstantiation() {
+        let vm = ParkingMapTestFixtures.viewModel()
+        let view = SettingsSheet(viewModel: vm)
+        #expect(type(of: view) == SettingsSheet.self)
+    }
 }

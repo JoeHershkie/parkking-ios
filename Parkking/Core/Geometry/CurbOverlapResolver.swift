@@ -18,8 +18,9 @@ nonisolated enum CurbOverlapResolver {
         if polarity == .restricted {
             if category == "no_stopping" { return 50 }
             if category == "no_standing" { return 40 }
+            if category == "snow_route" || category == "snow_streetcar" || category == "winter_maintenance" { return 45 }
         }
-        if polarity == .permitted && (category == "restricted_periods" || category == "permit_parking" || category.contains("permit")) {
+        if polarity == .permitted && category == "restricted_periods" {
             return 30
         }
         if polarity == .restricted || polarity == .notPermitted || severity == 2 {
@@ -39,7 +40,7 @@ nonisolated enum CurbOverlapResolver {
             let cat = feature.properties.scheduleCategory
             if cat == "no_stopping" || cat == "no_standing" || cat == "no_parking" {
                 polarity = .restricted
-            } else if cat == "restricted_periods" || cat == "permit_parking" {
+            } else if cat == "restricted_periods" {
                 polarity = .permitted
             } else {
                 polarity = .unknown

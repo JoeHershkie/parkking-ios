@@ -39,4 +39,29 @@ struct AddressFormatterTests {
         #expect(AddressFormatter.streetNamesMatch(address: "Avenue Rd", targetStreet: "Avenue Road"))
         #expect(AddressFormatter.streetNamesMatch(address: "University Ave", targetStreet: "University Avenue"))
     }
+
+    @Test("extracts street names from address titles and subtitles")
+    func extractStreetNameFromAddress() {
+        #expect(AddressFormatter.extractStreetName(title: "100 Queen St W", subtitle: "Toronto, ON") == "Queen St W")
+        #expect(AddressFormatter.extractStreetName(title: "12 Barse Street") == "Barse Street")
+        #expect(AddressFormatter.extractStreetName(title: "551A Fairlawn Ave") == "Fairlawn Ave")
+        #expect(AddressFormatter.extractStreetName(title: "City Hall", subtitle: "100 Queen St W, Toronto, ON") == "Queen St W")
+        #expect(AddressFormatter.extractStreetName(title: "Starbucks", subtitle: "450 Richmond St W, Toronto") == "Richmond St W")
+        #expect(AddressFormatter.extractStreetName(title: "Dropped Pin", subtitle: nil) == nil)
+        #expect(AddressFormatter.extractStreetName(title: "43.6532, -79.3832", subtitle: nil) == nil)
+        #expect(AddressFormatter.extractStreetName(title: "Current location", subtitle: nil) == nil)
+        #expect(AddressFormatter.extractStreetName(title: "Some Park", subtitle: nil) == nil)
+    }
+
+    @Test("recognizes address-like strings vs places and coordinates")
+    func addressLikeDetection() {
+        #expect(AddressFormatter.isAddressLike("100 Queen St W"))
+        #expect(AddressFormatter.isAddressLike("12 Barse Street"))
+        #expect(AddressFormatter.isAddressLike("Fairlawn Ave"))
+        #expect(!AddressFormatter.isAddressLike("Starbucks"))
+        #expect(!AddressFormatter.isAddressLike("Dropped Pin"))
+        #expect(!AddressFormatter.isAddressLike("43.6532, -79.3832"))
+        #expect(!AddressFormatter.isAddressLike("Toronto, ON"))
+    }
 }
+

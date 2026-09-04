@@ -17,7 +17,6 @@ struct ParkingMapKitView: UIViewRepresentable {
         map.isZoomEnabled = true
         map.isScrollEnabled = true
         map.showsCompass = false
-        map.showsTraffic = (viewModel.mapStyle == .driving)
         map.showsUserLocation = viewModel.isLocationAuthorized
         map.selectableMapFeatures = [.pointsOfInterest]
         map.layoutMargins = UIEdgeInsets(
@@ -27,7 +26,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             right: 0
         )
 
-        map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
+        map.preferredConfiguration = viewModel.mapStyle.makeConfiguration(includePointsOfInterest: false)
 
         map.cameraBoundary = MKMapView.CameraBoundary(
             coordinateRegion: ParkingMapConstants.parkingCoverageRegion
@@ -82,6 +81,7 @@ struct ParkingMapKitView: UIViewRepresentable {
         )
         longPress.minimumPressDuration = 0.5
         longPress.delegate = context.coordinator
+        tap.require(toFail: longPress)
         map.addGestureRecognizer(longPress)
 
         return map
@@ -114,11 +114,13 @@ struct ParkingMapKitView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var viewModel: ParkingMapViewModel
         var compassBottomConstraint: NSLayoutConstraint?
+        private var hasLoadedPOIs = false
         private var lastMapStyle: MapViewStyle?
         private var lastRenderItems: [ParkingMapRenderItem] = []
         private var lastSelectedIDs: Set<String> = []
         private var lastSearchPinID: String?
         private var lastTapDotID: String?
+        private var lastHydrantIDs: Set<String> = []
         private var colorOverlays: [ParkingOverlayBucketKind: ParkingStyledOverlay] = [:]
         private var selectedOverlays: [ParkingStyledOverlay] = []
         private var transitOverlays: [TransitLineOverlay] = []
@@ -141,8 +143,7 @@ struct ParkingMapKitView: UIViewRepresentable {
             if viewModel.mapStyle != lastMapStyle {
                 let previousStyle = lastMapStyle
                 lastMapStyle = viewModel.mapStyle
-                map.showsTraffic = (viewModel.mapStyle == .driving)
-                map.preferredConfiguration = viewModel.mapStyle.makeConfiguration()
+                map.preferredConfiguration = viewModel.mapStyle.makeConfiguration(includePointsOfInterest: hasLoadedPOIs)
 
                 if viewModel.mapStyle == .transit {
                     if transitOverlays.isEmpty {
@@ -179,7 +180,7 @@ struct ParkingMapKitView: UIViewRepresentable {
 
                 if let currentPin {
                     map.addAnnotation(currentPin)
-                    map.selectAnnotation(currentPin, animated: true)
+                    map.selectAnnotation(currentPin, animated: false)
                 }
             }
 
@@ -196,6 +197,20 @@ struct ParkingMapKitView: UIViewRepresentable {
                 }
             } else if let currentDot, let dotView = map.view(for: currentDot) as? TapDotAnnotationView {
                 dotView.configure(with: currentDot)
+            }
+
+            let currentHydrants = viewModel.hydrantAnnotations
+            let currentHydrantIDs = Set(currentHydrants.map(\.id))
+
+            if currentHydrantIDs != lastHydrantIDs {
+                lastHydrantIDs = currentHydrantIDs
+                let existingHydrants = map.annotations.compactMap { $0 as? HydrantAnnotation }
+                if !existingHydrants.isEmpty {
+                    map.removeAnnotations(existingHydrants)
+                }
+                if !currentHydrants.isEmpty {
+                    map.addAnnotations(currentHydrants)
+                }
             }
         }
 
@@ -334,12 +349,21 @@ struct ParkingMapKitView: UIViewRepresentable {
                 return dotView
             }
 
+            if let hydrantAnnotation = annotation as? HydrantAnnotation {
+                if let dequeued = mapView.dequeueReusableAnnotationView(withIdentifier: HydrantAnnotationView.reuseID) as? HydrantAnnotationView {
+                    dequeued.annotation = hydrantAnnotation
+                    return dequeued
+                } else {
+                    return HydrantAnnotationView(annotation: hydrantAnnotation, reuseIdentifier: HydrantAnnotationView.reuseID)
+                }
+            }
+
             return nil
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let transit = overlay as? TransitLineOverlay {
-                let renderer = MKMultiPolylineRenderer(multiPolyline: transit)
+                let renderer = MKPolylineRenderer(polyline: transit)
                 renderer.strokeColor = transit.strokeColor
                 renderer.lineWidth = transit.lineWidth
                 renderer.lineCap = .round
@@ -361,6 +385,24 @@ struct ParkingMapKitView: UIViewRepresentable {
             return renderer
         }
 
+        func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
+            if !hasLoadedPOIs && fullyRendered {
+                upgradePOIsIfNeeded(on: mapView)
+            }
+        }
+
+        func mapViewDidFinishLoadingMap(_ mapView: MKMapView) {
+            if !hasLoadedPOIs {
+                upgradePOIsIfNeeded(on: mapView)
+            }
+        }
+
+        private func upgradePOIsIfNeeded(on map: MKMapView) {
+            guard !hasLoadedPOIs else { return }
+            hasLoadedPOIs = true
+            map.preferredConfiguration = viewModel.mapStyle.makeConfiguration(includePointsOfInterest: true)
+        }
+
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             let region = mapView.region
             let pitch = mapView.camera.pitch
@@ -378,7 +420,7 @@ struct ParkingMapKitView: UIViewRepresentable {
                     title: title,
                     subtitle: mapFeature.subtitle ?? nil,
                     coordinate: coordinate,
-                    source: .tap
+                    source: .poi
                 )
             }
         }
@@ -402,6 +444,10 @@ struct ParkingMapKitView: UIViewRepresentable {
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.impactOccurred()
             viewModel.handleLongPress(at: coordinate)
+            // Drop current touch tracking so holding the same touch does not
+            // re-trigger multiple began events as the map animates underneath the finger.
+            gesture.isEnabled = false
+            gesture.isEnabled = true
         }
 
         func gestureRecognizer(
@@ -423,7 +469,10 @@ struct ParkingMapKitView: UIViewRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
-            true
+            if gestureRecognizer is UILongPressGestureRecognizer || otherGestureRecognizer is UILongPressGestureRecognizer {
+                return false
+            }
+            return true
         }
     }
 }

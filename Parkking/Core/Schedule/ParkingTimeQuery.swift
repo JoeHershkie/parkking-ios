@@ -46,19 +46,22 @@ struct TimeQuery: Sendable, Equatable, Codable {
     /// Requested duration in minutes (preserved even when truncated).
     var requestedDurationMinutes: Int
     var durationPreset: DurationPreset
+    var majorSnowstorm: Bool?
 
     nonisolated init(
         mode: TimeMode,
         date: String,
         startMinute: Int,
         requestedDurationMinutes: Int,
-        durationPreset: DurationPreset
+        durationPreset: DurationPreset,
+        majorSnowstorm: Bool? = nil
     ) {
         self.mode = mode
         self.date = date
         self.startMinute = startMinute
         self.requestedDurationMinutes = requestedDurationMinutes
         self.durationPreset = durationPreset
+        self.majorSnowstorm = majorSnowstorm
     }
 }
 
@@ -108,15 +111,18 @@ enum ParkingTimeQuery {
         durationMinutes: Int = 60,
         preset: DurationPreset = .minutes(60),
         now: Date = Date(),
-        timeZone: TimeZone = torontoTimeZone
+        timeZone: TimeZone = torontoTimeZone,
+        majorSnowstorm: Bool? = nil
     ) -> TimeQuery {
-        let slot = slotFromDate(now, timeZone: timeZone)
+        var slot = slotFromDate(now, timeZone: timeZone)
+        slot.majorSnowstorm = majorSnowstorm
         return TimeQuery(
             mode: .now,
             date: slotToDateString(slot),
             startMinute: slot.minuteOfDay,
             requestedDurationMinutes: durationMinutes,
-            durationPreset: preset
+            durationPreset: preset,
+            majorSnowstorm: majorSnowstorm
         )
     }
 
@@ -125,12 +131,13 @@ enum ParkingTimeQuery {
         now: Date = Date(),
         timeZone: TimeZone = torontoTimeZone
     ) -> ResolvedTimeQuery {
-        let slot: Slot
+        var slot: Slot
         if query.mode == .now {
             slot = slotFromDate(now, timeZone: timeZone)
         } else {
             slot = slotFromDateString(query.date, minuteOfDay: query.startMinute, timeZone: timeZone)
         }
+        slot.majorSnowstorm = query.majorSnowstorm
 
         let requested = max(0, query.requestedDurationMinutes)
         if requested <= 0 {
@@ -171,6 +178,7 @@ enum ParkingTimeQuery {
         let nextDate = calendar.date(byAdding: .day, value: 1, to: startDate) ?? startDate.addingTimeInterval(86400)
         var nextDaySlot = slotFromDate(nextDate, timeZone: timeZone)
         nextDaySlot.minuteOfDay = 0
+        nextDaySlot.majorSnowstorm = query.majorSnowstorm
         let nextDayEndMinute = rawEnd - 1440
 
         return ResolvedTimeQuery(

@@ -18,7 +18,7 @@ final class MapCameraCoordinator {
     var pendingCameraRegion: MKCoordinateRegion?
     var visibleRegion: MKCoordinateRegion?
     private(set) var lastFlownRegion: MKCoordinateRegion?
-    var mapStyle: MapViewStyle = .standard
+    var mapStyle: MapViewStyle = .driving
 
     init(mapStyle: MapViewStyle? = nil, initialRegion: MKCoordinateRegion? = nil) {
         if let mapStyle {
@@ -27,7 +27,7 @@ final class MapCameraCoordinator {
                   let resolved = MapViewStyle(rawValue: saved) {
             self.mapStyle = resolved
         } else {
-            self.mapStyle = .standard
+            self.mapStyle = .driving
         }
 
         if let initialRegion {

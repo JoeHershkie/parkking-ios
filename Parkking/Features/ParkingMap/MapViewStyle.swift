@@ -35,29 +35,30 @@ enum MapViewStyle: String, CaseIterable, Identifiable, Sendable, Codable {
         }
     }
 
-    func makeConfiguration() -> MKMapConfiguration {
+    func makeConfiguration(includePointsOfInterest: Bool = true) -> MKMapConfiguration {
+        let poiFilter: MKPointOfInterestFilter = includePointsOfInterest ? .includingAll : .excludingAll
         switch self {
         case .standard:
             let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            config.pointOfInterestFilter = .includingAll
+            config.pointOfInterestFilter = poiFilter
             config.showsTraffic = false
             return config
 
         case .driving:
             let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
-            config.pointOfInterestFilter = .includingAll
+            config.pointOfInterestFilter = poiFilter
             config.showsTraffic = true
             return config
 
         case .transit:
-            let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
-            config.pointOfInterestFilter = .includingAll
+            let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .default)
+            config.pointOfInterestFilter = poiFilter
             config.showsTraffic = false
             return config
 
         case .satellite:
             let config = MKHybridMapConfiguration(elevationStyle: .realistic)
-            config.pointOfInterestFilter = .includingAll
+            config.pointOfInterestFilter = poiFilter
             config.showsTraffic = false
             return config
         }
