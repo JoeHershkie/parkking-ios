@@ -167,6 +167,20 @@ struct ParkingMapViewModelTests {
         #expect(vm.cardAddress == "124 Queen St W")
     }
 
+    @Test("long press gesture recognizer does not recognize simultaneously with pan or tap")
+    func longPressGestureSimultaneousArbitration() {
+        let vm = ParkingMapTestFixtures.viewModel()
+        let coordinator = ParkingMapKitView.Coordinator(viewModel: vm)
+        let longPress = UILongPressGestureRecognizer()
+        let pan = UIPanGestureRecognizer()
+        let tap = UITapGestureRecognizer()
+
+        #expect(coordinator.gestureRecognizer(longPress, shouldRecognizeSimultaneouslyWith: pan) == false)
+        #expect(coordinator.gestureRecognizer(pan, shouldRecognizeSimultaneouslyWith: longPress) == false)
+        #expect(coordinator.gestureRecognizer(longPress, shouldRecognizeSimultaneouslyWith: tap) == false)
+        #expect(coordinator.gestureRecognizer(tap, shouldRecognizeSimultaneouslyWith: tap) == true)
+    }
+
     @Test("reverse geocode rejects cross-street addresses and keeps segment street")
     func sameStreetAddressValidation() async {
         let geocoding = MockGeocodingClient(defaultResult: "551 Fairlawn Ave, North York")
@@ -353,6 +367,9 @@ struct ParkingMapViewModelTests {
         #expect(standardConfig?.showsTraffic == false)
         #expect(standardConfig?.pointOfInterestFilter == .includingAll)
 
+        let deferredStandardConfig = vm.mapStyle.makeConfiguration(includePointsOfInterest: false) as? MKStandardMapConfiguration
+        #expect(deferredStandardConfig?.pointOfInterestFilter == .excludingAll)
+
         vm.setMapStyle(.driving)
         #expect(vm.mapStyle == .driving)
         let drivingConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
@@ -360,12 +377,18 @@ struct ParkingMapViewModelTests {
         #expect(drivingConfig?.showsTraffic == true)
         #expect(drivingConfig?.pointOfInterestFilter == .includingAll)
 
+        let deferredDrivingConfig = vm.mapStyle.makeConfiguration(includePointsOfInterest: false) as? MKStandardMapConfiguration
+        #expect(deferredDrivingConfig?.pointOfInterestFilter == .excludingAll)
+
         vm.setMapStyle(.transit)
         #expect(vm.mapStyle == .transit)
         let transitConfig = vm.mapStyle.makeConfiguration() as? MKStandardMapConfiguration
         #expect(transitConfig != nil)
-        #expect(transitConfig?.pointOfInterestFilter != nil)
-        #expect(transitConfig?.emphasisStyle == .muted)
+        #expect(transitConfig?.pointOfInterestFilter == .includingAll)
+        #expect(transitConfig?.emphasisStyle == .default)
+
+        let deferredTransitConfig = vm.mapStyle.makeConfiguration(includePointsOfInterest: false) as? MKStandardMapConfiguration
+        #expect(deferredTransitConfig?.pointOfInterestFilter == .excludingAll)
 
         vm.setMapStyle(.satellite)
         #expect(vm.mapStyle == .satellite)
@@ -373,6 +396,18 @@ struct ParkingMapViewModelTests {
         #expect(satelliteConfig != nil)
         #expect(satelliteConfig?.elevationStyle == .realistic)
         #expect(satelliteConfig?.pointOfInterestFilter == .includingAll)
+
+        let deferredSatelliteConfig = vm.mapStyle.makeConfiguration(includePointsOfInterest: false) as? MKHybridMapConfiguration
+        #expect(deferredSatelliteConfig?.pointOfInterestFilter == .excludingAll)
+    }
+
+    @Test("default map style is driving when unconfigured")
+    func defaultMapStyleIsDriving() {
+        UserDefaults.standard.removeObject(forKey: "parkking.mapStyle")
+        defer { UserDefaults.standard.removeObject(forKey: "parkking.mapStyle") }
+
+        let vm = ParkingMapTestFixtures.viewModel()
+        #expect(vm.mapStyle == .driving)
     }
 
     @Test("dropped pin on different street from nearest segment shows pin address and likely allowed verdict")
@@ -486,4 +521,114 @@ struct ParkingMapViewModelTests {
         #expect(d5000 >= 1.6 && d5000 <= 2.2)
         #expect(d20000 >= 2.0 && d20000 <= 2.4)
     }
+
+    @Test("settings presentation and hydrant toggle management")
+    func settingsPresentationAndHydrantToggle() async {
+        UserDefaults.standard.removeObject(forKey: "parkking.showHydrantsOnMap")
+        defer { UserDefaults.standard.removeObject(forKey: "parkking.showHydrantsOnMap") }
+
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+        #expect(vm.isSettingsPresented == false)
+        vm.isSettingsPresented = true
+        #expect(vm.isSettingsPresented == true)
+
+        #expect(vm.showHydrantsOnMap == false)
+        vm.showHydrantsOnMap = true
+        #expect(vm.showHydrantsOnMap == true)
+        vm.showHydrantsOnMap = false
+        #expect(vm.showHydrantsOnMap == false)
+        #expect(vm.hydrantAnnotations.isEmpty)
+    }
+
+    @Test("searching an address on a street without drawn bylaws presents likely allowed verdict with no curb highlight")
+    func addressSearchOnStreetWithoutBylawsGivesLikelyAllowed() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+
+        let unmappedCoord = CLLocationCoordinate2D(latitude: 43.72, longitude: -79.41)
+        let accepted = vm.selectSearchResult(
+            title: "12 Barse Street",
+            subtitle: "North York, ON",
+            coordinate: unmappedCoord,
+            source: .search
+        )
+        #expect(accepted)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.cardAddress == "12 Barse Street")
+        #expect(vm.selectedFeatureIDs.isEmpty)
+        #expect(vm.selection?.selected == nil)
+        #expect(vm.verdict?.status == .likelyAllowed)
+        #expect(vm.verdict?.headline == "Likely allowed")
+        #expect(vm.searchPin?.title == "12 Barse Street")
+        #expect(vm.tapDot == nil)
+    }
+
+    @Test("tapping a POI presents verdict card with search pin and street verdict")
+    func poiTapPresentsVerdictCardWithStreetVerdict() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Tapping POI near Queen St with address in subtitle
+        let accepted = vm.selectSearchResult(
+            title: "City Hall Cafe",
+            subtitle: "100 Queen St W, Toronto, ON",
+            coordinate: ParkingMapTestFixtures.queenNorth,
+            source: .poi
+        )
+        #expect(accepted)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+        #expect(vm.searchPin?.title == "City Hall Cafe")
+        #expect(vm.searchPin?.source == .poi)
+        #expect(vm.tapDot == nil)
+        #expect(vm.cardAddress == "City Hall Cafe")
+        #expect(vm.selection?.selected != nil)
+        #expect(vm.verdict != nil)
+    }
+
+    @Test("tapping a POI on an unmapped street presents likely allowed verdict")
+    func poiTapOnStreetWithoutBylawGivesLikelyAllowed() async {
+        let vm = ParkingMapTestFixtures.viewModel()
+        await vm.start()
+
+        let unmappedCoord = CLLocationCoordinate2D(latitude: 43.72, longitude: -79.41)
+        let accepted = vm.selectSearchResult(
+            title: "Corner Bakery",
+            subtitle: "12 Barse St, Toronto, ON",
+            coordinate: unmappedCoord,
+            source: .poi
+        )
+        #expect(accepted)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin?.title == "Corner Bakery")
+        #expect(vm.cardAddress == "Corner Bakery")
+        #expect(vm.selectedFeatureIDs.isEmpty)
+        #expect(vm.selection?.selected == nil)
+        #expect(vm.verdict?.status == .likelyAllowed)
+        #expect(vm.verdict?.headline == "Likely allowed")
+    }
+
+    @Test("dropped pin without address falls back to nearest point on nearest street")
+    func droppedPinWithoutAddressFallsBackToNearestStreet() async {
+        let geocoding = MockGeocodingClient(defaultResult: nil)
+        let vm = ParkingMapTestFixtures.viewModel(geocoding: geocoding)
+        await vm.start()
+        await vm.handleRegionChange(ParkingMapTestFixtures.zoomedInRegion)
+
+        // Point set back 30m from Queen St
+        let setbackCoord = CLLocationCoordinate2D(latitude: 43.6503, longitude: -79.4005)
+        vm.handleLongPress(at: setbackCoord)
+        #expect(vm.isResultPresented == true)
+        #expect(vm.searchPin != nil)
+
+        // Wait for async reverse geocoding to complete (yielding nil)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(vm.selection?.selected != nil)
+        #expect(AddressFormatter.streetNamesMatch(address: vm.cardAddress, targetStreet: "Queen St"))
+        #expect(vm.verdict != nil)
+    }
 }
+

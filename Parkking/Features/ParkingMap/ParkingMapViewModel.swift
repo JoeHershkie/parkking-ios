@@ -9,6 +9,7 @@ enum SelectionSource: Equatable, Sendable {
     case search
     case recent
     case gps
+    case poi
 }
 
 @MainActor
@@ -80,7 +81,20 @@ final class ParkingMapViewModel {
     var selectedFeatureIDs: Set<String> = []
     var searchPin: SearchPinAnnotation?
     var tapDot: TapDotAnnotation?
+    var hydrantAnnotations: [HydrantAnnotation] = []
     var cardAddress: String?
+    var isSettingsPresented: Bool = false
+
+    var showHydrantsOnMap: Bool {
+        didSet {
+            UserDefaults.standard.set(showHydrantsOnMap, forKey: Self.showHydrantsStorageKey)
+            if !showHydrantsOnMap {
+                hydrantAnnotations = []
+            } else if let region = cameraCoordinator.visibleRegion {
+                Task { await refreshViewport(region: region) }
+            }
+        }
+    }
 
     var loadState: ParkingDataLoadState = .idle
     var renderItems: [ParkingMapRenderItem] = []
@@ -96,9 +110,11 @@ final class ParkingMapViewModel {
     var locationLabel = "Search or tap the map"
     var recents: [SavedLocation] = []
     var favorites: [SavedLocation] = []
+    let snowEmergencyClient: SnowEmergencyClient
     private(set) var lastSelectionSource: SelectionSource?
 
     private static let timeQueryStorageKey = "parkking.appliedTimeQuery"
+    private static let showHydrantsStorageKey = "parkking.showHydrantsOnMap"
     private let dataStore: ParkingDataStore
     private let locationClient: any LocationProviding
     private let recentsStore: any RecentsStoring
@@ -139,6 +155,7 @@ final class ParkingMapViewModel {
         recentsStore: (any RecentsStoring)? = nil,
         favoritesStore: (any FavoritesStoring)? = nil,
         geocodingClient: (any GeocodingProviding)? = nil,
+        snowEmergencyClient: SnowEmergencyClient? = nil,
         now: @escaping () -> Date = Date.init,
         dataset: ParkingDataset? = nil,
         startsClock: Bool = true,
@@ -152,11 +169,19 @@ final class ParkingMapViewModel {
         self.recentsStore = recentsStore ?? RecentsStore()
         self.favoritesStore = favoritesStore ?? FavoritesStore()
         self.geocodingClient = geocodingClient ?? MapKitGeocodingClient()
+        let snowClient = snowEmergencyClient ?? SnowEmergencyClient()
+        self.snowEmergencyClient = snowClient
         self.now = now
         self.startsClock = startsClock
         self.openURL = openURL ?? { UIApplication.shared.open($0) }
         self.recents = self.recentsStore.recents
         self.favorites = self.favoritesStore.favorites
+
+        if UserDefaults.standard.object(forKey: Self.showHydrantsStorageKey) != nil {
+            self.showHydrantsOnMap = UserDefaults.standard.bool(forKey: Self.showHydrantsStorageKey)
+        } else {
+            self.showHydrantsOnMap = false
+        }
 
         let camera = MapCameraCoordinator(mapStyle: mapStyle, initialRegion: initialRegion)
         self.cameraCoordinator = camera
@@ -167,7 +192,10 @@ final class ParkingMapViewModel {
         if let restored = Self.restoreAppliedQuery() {
             self.appliedTimeQuery = restored
         } else {
-            self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(now: now())
+            self.appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(
+                now: now(),
+                majorSnowstorm: snowClient.isDeclared
+            )
         }
 
         if let dataset {
@@ -453,7 +481,16 @@ final class ParkingMapViewModel {
         reverseGeocodeTask?.cancel()
         reverseGeocodeTask = nil
 
-        let fly = source != .tap
+        let fly: Bool
+        switch source {
+        case .tap:
+            fly = false
+        case .poi:
+            fly = !curbVisible
+        case .search, .recent, .gps:
+            fly = true
+        }
+
         let recordRecent = source == .search || source == .recent
 
         if fly {
@@ -462,7 +499,7 @@ final class ParkingMapViewModel {
             curbVisible = true
         }
 
-        if source == .search || source == .recent {
+        if source != .tap {
             searchPin = SearchPinAnnotation(
                 coordinate: coordinate,
                 title: label,
@@ -475,50 +512,39 @@ final class ParkingMapViewModel {
         }
 
         guard let dataset else { return }
-        let point = LngLat(lng: coordinate.longitude, lat: coordinate.latitude)
-        let searchDistance = (source == .tap)
-            ? CurbSelection.tapMaxDistanceMeters
-            : CurbSelection.searchMaxDistanceMeters
-        let padDeg = CurbGeometry.degreesPad(
-            forMeters: searchDistance,
-            atLatitude: point.lat
-        )
-        let subset = dataset.index.queryBBox(
-            BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
-            padDeg: padDeg
-        )
-        let enrichedSubset: [ParkingFeature]
-        if let resolved = resolvedQuery {
-            enrichedSubset = ParkingSpatialIndex.enrichFeaturesSubset(
-                subset,
-                resolved: resolved,
-                includeUnknown: true
-            ).features
-        } else {
-            enrichedSubset = subset
-        }
-        let result = CurbSelection.selectNearestCurb(
-            features: enrichedSubset,
-            point: point,
-            maxDistanceMeters: searchDistance,
-            preferredGroupKey: nil
-        )
-
         lastSelectionSource = source
-        selection = result
-
-        if recordRecent, let label {
-            recents = recentsStore.add(
-                label: label,
-                subtitle: subtitle,
-                coordinate: coordinate
-            )
-        }
-
-        syncSelectedFeatureIDs()
-        recomputeVerdict()
+        let point = LngLat(lng: coordinate.longitude, lat: coordinate.latitude)
 
         if source == .tap {
+            let padDeg = CurbGeometry.degreesPad(
+                forMeters: CurbSelection.tapMaxDistanceMeters,
+                atLatitude: point.lat
+            )
+            let subset = dataset.index.queryBBox(
+                BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
+                padDeg: padDeg
+            )
+            let candidateFeatures: [ParkingFeature]
+            if let resolved = resolvedQuery {
+                candidateFeatures = ParkingSpatialIndex.enrichFeaturesSubset(
+                    subset,
+                    resolved: resolved,
+                    includeUnknown: true
+                ).features
+            } else {
+                candidateFeatures = subset
+            }
+            let result = CurbSelection.selectNearestCurb(
+                features: candidateFeatures,
+                point: point,
+                maxDistanceMeters: CurbSelection.tapMaxDistanceMeters,
+                preferredGroupKey: nil
+            )
+
+            selection = result
+            syncSelectedFeatureIDs()
+            recomputeVerdict()
+
             if let selected = result.selected {
                 isResultPresented = true
                 hasTappedSegmentThisSession = true
@@ -559,12 +585,23 @@ final class ParkingMapViewModel {
                 locationLabel = "Search or tap the map"
             }
         } else {
+            // Place / Point selection (.search, .recent, .gps, .poi)
             isResultPresented = true
             hasTappedSegmentThisSession = true
             tapDot = nil
 
-            let rawTitle = label ?? subtitle ?? result.selected?.street
+            if recordRecent, let label {
+                recents = recentsStore.add(
+                    label: label,
+                    subtitle: subtitle,
+                    coordinate: coordinate
+                )
+            }
+
+            let initialStreet = AddressFormatter.extractStreetName(title: label, subtitle: subtitle)
+            let rawTitle = label ?? subtitle
             let displayTitle = AddressFormatter.cleanAddress(rawTitle) ?? rawTitle
+
             cardAddress = displayTitle
             locationLabel = displayTitle
                 ?? String(
@@ -573,36 +610,44 @@ final class ParkingMapViewModel {
                     abs(coordinate.longitude)
                 )
 
-            let isCoordinateOrGeneric = label == nil
-                || label == "Current location"
-                || label == "Dropped Pin"
-                || label?.contains("°") == true
-                || (label?.split(separator: ",").count == 2 && Double(label!.split(separator: ",")[0].trimmingCharacters(in: .whitespaces)) != nil)
+            if let targetStreet = initialStreet {
+                resolvePointOnStreet(
+                    street: targetStreet,
+                    point: point,
+                    coordinate: coordinate,
+                    dataset: dataset
+                )
+            } else {
+                resolveNearestStreetFallback(
+                    point: point,
+                    coordinate: coordinate,
+                    dataset: dataset
+                )
 
-            if isCoordinateOrGeneric {
                 let lookupCoord = coordinate
-                let targetStreet = result.selected?.street
+                let currentStreet = selection?.selected?.street
                 reverseGeocodeTask = AddressGeocodingResolver.resolveSearchOrGenericAddress(
                     geocodingClient: geocodingClient,
                     coordinate: lookupCoord,
-                    targetStreet: targetStreet
-                ) { [weak self] address, isMismatch in
+                    targetStreet: currentStreet
+                ) { [weak self] address, _ in
                     guard let self else { return }
-                    self.cardAddress = address
-                    self.locationLabel = address
-                    if isMismatch {
-                        // Address of the dropped pin / search is on a street with no mapped bylaw segments.
-                        // Show the address of the pin, do not highlight unrelated segment, give "Likely allowed" verdict.
-                        self.selectedFeatureIDs = []
-                        self.selection = nil
-                        if let resolved = self.resolvedQuery {
-                            self.verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
-                                features: [],
-                                resolved: resolved,
-                                street: address,
-                                side: nil,
-                                sideDisplay: nil
-                            )
+                    if let address {
+                        self.cardAddress = address
+                        self.locationLabel = address
+                        let resolvedStreet = AddressFormatter.extractStreetName(title: address) ?? address
+                        self.resolvePointOnStreet(
+                            street: resolvedStreet,
+                            point: point,
+                            coordinate: coordinate,
+                            dataset: dataset
+                        )
+                    } else {
+                        if self.cardAddress == nil || AddressFormatter.isCoordinateOrGeneric(self.cardAddress) {
+                            if let street = self.selection?.selected?.street {
+                                self.cardAddress = street
+                                self.locationLabel = street
+                            }
                         }
                     }
                 }
@@ -611,6 +656,115 @@ final class ParkingMapViewModel {
 
         if fly, let region = visibleRegion {
             Task { await refreshViewport(region: region) }
+        }
+    }
+
+    private func resolvePointOnStreet(
+        street: String,
+        point: LngLat,
+        coordinate: CLLocationCoordinate2D,
+        dataset: ParkingDataset
+    ) {
+        let padDeg = CurbGeometry.degreesPad(
+            forMeters: 75.0,
+            atLatitude: point.lat
+        )
+        let subset = dataset.index.queryBBox(
+            BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
+            padDeg: padDeg
+        )
+        let streetFeatures = subset.filter {
+            AddressFormatter.streetNamesMatch(address: street, targetStreet: $0.properties.highway)
+        }
+
+        let candidateFeatures: [ParkingFeature]
+        if let resolved = resolvedQuery {
+            candidateFeatures = ParkingSpatialIndex.enrichFeaturesSubset(
+                streetFeatures,
+                resolved: resolved,
+                includeUnknown: true
+            ).features
+        } else {
+            candidateFeatures = streetFeatures
+        }
+
+        let result = CurbSelection.selectNearestCurb(
+            features: candidateFeatures,
+            point: point,
+            maxDistanceMeters: 50.0,
+            preferredGroupKey: nil
+        )
+
+        if result.selected != nil {
+            selection = result
+            syncSelectedFeatureIDs()
+            recomputeVerdict()
+        } else {
+            selection = nil
+            selectedFeatureIDs = []
+            if let resolved = resolvedQuery {
+                verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
+                    features: [],
+                    resolved: resolved,
+                    street: cardAddress ?? street,
+                    side: nil,
+                    sideDisplay: nil
+                )
+            }
+        }
+    }
+
+    private func resolveNearestStreetFallback(
+        point: LngLat,
+        coordinate: CLLocationCoordinate2D,
+        dataset: ParkingDataset
+    ) {
+        let padDeg = CurbGeometry.degreesPad(
+            forMeters: CurbSelection.searchMaxDistanceMeters,
+            atLatitude: point.lat
+        )
+        let subset = dataset.index.queryBBox(
+            BBox(minLng: point.lng, minLat: point.lat, maxLng: point.lng, maxLat: point.lat),
+            padDeg: padDeg
+        )
+        let candidateFeatures: [ParkingFeature]
+        if let resolved = resolvedQuery {
+            candidateFeatures = ParkingSpatialIndex.enrichFeaturesSubset(
+                subset,
+                resolved: resolved,
+                includeUnknown: true
+            ).features
+        } else {
+            candidateFeatures = subset
+        }
+
+        let result = CurbSelection.selectNearestCurb(
+            features: candidateFeatures,
+            point: point,
+            maxDistanceMeters: CurbSelection.searchMaxDistanceMeters,
+            preferredGroupKey: nil
+        )
+
+        if let selected = result.selected {
+            selection = result
+            syncSelectedFeatureIDs()
+            recomputeVerdict()
+            if cardAddress == nil || AddressFormatter.isCoordinateOrGeneric(cardAddress) {
+                cardAddress = selected.street
+                locationLabel = selected.street
+            }
+        } else {
+            selection = nil
+            selectedFeatureIDs = []
+            if let resolved = resolvedQuery {
+                verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
+                    features: [],
+                    resolved: resolved,
+                    street: cardAddress,
+                    side: nil,
+                    sideDisplay: nil
+                )
+            }
         }
     }
 
@@ -652,6 +806,18 @@ final class ParkingMapViewModel {
         }
     }
 
+    func setSnowEmergencyDeclared(_ active: Bool) {
+        snowEmergencyClient.setDeclared(active)
+        if appliedTimeQuery.mode == .now {
+            appliedTimeQuery.majorSnowstorm = active
+        }
+        resolveAppliedQuery(recomputeViewport: true)
+    }
+
+    func toggleSnowEmergency() {
+        setSnowEmergencyDeclared(!snowEmergencyClient.isDeclared)
+    }
+
     private func startClock() {
         if queryClock == nil {
             queryClock = TimeQueryClock(now: now) { [weak self] in
@@ -666,7 +832,8 @@ final class ParkingMapViewModel {
         appliedTimeQuery = ParkingTimeQuery.createNowTimeQuery(
             durationMinutes: appliedTimeQuery.requestedDurationMinutes,
             preset: appliedTimeQuery.durationPreset,
-            now: now()
+            now: now(),
+            majorSnowstorm: snowEmergencyClient.isDeclared
         )
         resolveAppliedQuery(recomputeViewport: recomputeViewport)
     }
@@ -707,10 +874,13 @@ final class ParkingMapViewModel {
     private func recomputeVerdict() {
         guard let resolved = resolvedQuery else { return }
         guard let selected = selection?.selected else {
-            if selection != nil {
+            if isResultPresented {
                 verdict = CurbVerdictComposer.composeCurbVerdictForQuery(
                     features: [],
-                    resolved: resolved
+                    resolved: resolved,
+                    street: cardAddress,
+                    side: nil,
+                    sideDisplay: nil
                 )
             } else {
                 verdict = nil
@@ -730,10 +900,12 @@ final class ParkingMapViewModel {
     private func refreshViewport(region: MKCoordinateRegion) async {
         guard let dataset, let resolved = resolvedQuery else {
             if !renderItems.isEmpty { renderItems = [] }
+            if !hydrantAnnotations.isEmpty { hydrantAnnotations = [] }
             return
         }
         guard curbVisible else {
             if !renderItems.isEmpty { renderItems = [] }
+            if !hydrantAnnotations.isEmpty { hydrantAnnotations = [] }
             return
         }
 
@@ -747,19 +919,43 @@ final class ParkingMapViewModel {
         )
         let index = dataset.index
 
-        let items: [ParkingMapRenderItem] = await Task.detached(priority: .userInitiated) {
+        let showHydrants = showHydrantsOnMap
+        let (items, hydrants): ([ParkingMapRenderItem], [HydrantAnnotation]) = await Task.detached(priority: .userInitiated) {
             let subset = index.queryBBox(bbox, padDeg: ParkingMapConstants.viewportPadDegrees)
             let enriched = ParkingSpatialIndex.enrichFeaturesSubset(
                 subset,
                 resolved: resolved,
                 includeUnknown: true
             )
-            return CurbOverlapResolver.resolveViewportOverlaps(features: enriched.features)
+            let renderItems = CurbOverlapResolver.resolveViewportOverlaps(features: enriched.features)
+
+            var hydrantList: [HydrantAnnotation] = []
+            if showHydrants {
+                var seenHydrantCoords = Set<String>()
+                for f in subset where f.properties.hasHydrant == true {
+                    guard let firstCoord = f.coordinateParts.first?.first else { continue }
+                    let key = String(format: "%.5f,%.5f", firstCoord.latitude, firstCoord.longitude)
+                    if seenHydrantCoords.insert(key).inserted {
+                        hydrantList.append(
+                            HydrantAnnotation(
+                                coordinate: firstCoord,
+                                featureID: f.id.rawValue,
+                                id: "hydrant-\(f.id.rawValue)"
+                            )
+                        )
+                    }
+                }
+            }
+
+            return (renderItems, hydrantList)
         }.value
 
         guard generation == viewportGeneration else { return }
         if items != renderItems {
             renderItems = items
+        }
+        if hydrants != hydrantAnnotations {
+            hydrantAnnotations = hydrants
         }
     }
 }
