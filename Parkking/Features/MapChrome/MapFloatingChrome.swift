@@ -22,16 +22,43 @@ struct MapFloatingChrome: View {
 
             Spacer()
 
-            HStack {
+            HStack(alignment: .bottom) {
+                leftControlsStack
+                    .opacity(bottomPadding > 650 ? 0 : 1)
                 Spacer()
                 rightControlsStack
                     .opacity(bottomPadding > 650 ? 0 : 1)
             }
-            .padding(.trailing, 15)
+            .padding(.horizontal, 15)
             .padding(.bottom, bottomPadding)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: bottomPadding)
         }
         .padding(.top, 8)
+        .sheet(isPresented: $viewModel.isSettingsPresented) {
+            SettingsSheet(viewModel: viewModel)
+        }
+    }
+
+    private var leftControlsStack: some View {
+        VStack(spacing: 8) {
+            settingsButton
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            viewModel.isSettingsPresented = true
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(Color.primary)
+                .frame(width: 44, height: 44)
+                .background(.regularMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .accessibilityHint("Open settings and map options")
     }
 
     private var rightControlsStack: some View {
