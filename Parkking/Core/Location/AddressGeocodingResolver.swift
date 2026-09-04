@@ -51,7 +51,7 @@ enum AddressGeocodingResolver {
         geocodingClient: any GeocodingProviding,
         coordinate: CLLocationCoordinate2D,
         targetStreet: String?,
-        onResolved: @escaping @MainActor (_ address: String, _ isStreetMismatch: Bool) -> Void
+        onResolved: @escaping @MainActor (_ address: String?, _ isStreetMismatch: Bool) -> Void
     ) -> Task<Void, Never> {
         Task {
             if let rawAddress = await geocodingClient.reverseGeocode(coordinate: coordinate),
@@ -64,6 +64,10 @@ enum AddressGeocodingResolver {
                 }
                 await MainActor.run {
                     onResolved(cleaned, isMismatch)
+                }
+            } else {
+                await MainActor.run {
+                    onResolved(nil, false)
                 }
             }
         }
