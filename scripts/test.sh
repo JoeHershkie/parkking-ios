@@ -73,7 +73,7 @@ ensure_sim_booted() {
 }
 
 FORMATTER=""
-if command -v xcbeautify >/dev/null 2>&1; then
+if [[ -t 1 ]] && command -v xcbeautify >/dev/null 2>&1; then
   FORMATTER="xcbeautify"
 fi
 
