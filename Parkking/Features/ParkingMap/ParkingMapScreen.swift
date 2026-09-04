@@ -2,6 +2,7 @@ import MapKit
 import SwiftUI
 
 struct ParkingMapScreen: View {
+    var isSplashActive: Bool = false
     @State private var viewModel = ParkingMapViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -42,7 +43,10 @@ struct ParkingMapScreen: View {
                     MapFloatingChrome(viewModel: viewModel, bottomPadding: bottomInset)
                 }
         }
-        .sheet(isPresented: .constant(true)) {
+        .sheet(isPresented: Binding(
+            get: { !isSplashActive },
+            set: { _ in }
+        )) {
             Group {
                 if viewModel.isResultPresented {
                     VerdictSheet(viewModel: viewModel, detent: $sheetDetent)
