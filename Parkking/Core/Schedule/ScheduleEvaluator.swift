@@ -1,8 +1,24 @@
 import Foundation
 
 enum ScheduleEvaluator {
-    nonisolated private static func isRestrictedCategory(_ category: String) -> Bool {
-        category == "no_parking" || category == "no_stopping" || category == "no_standing"
+    nonisolated static func isRestrictedCategory(_ category: String) -> Bool {
+        switch category {
+        case "no_parking",
+             "no_stopping",
+             "no_standing",
+             "snow_route",
+             "snow_streetcar",
+             "winter_maintenance",
+             "commercial_loading",
+             "delivery_loading",
+             "passenger_loading",
+             "car_share",
+             "ev_charging",
+             "taxicab_stand":
+            return true
+        default:
+            return category.contains("snow") || category.contains("winter")
+        }
     }
 
     nonisolated private static func polarityFromOverlap(
@@ -59,6 +75,81 @@ enum ScheduleEvaluator {
         return .inactive
     }
 
+    nonisolated static func isSeasonalWinterOrSnowText(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        if lower.contains("snow") || lower.contains("winter") {
+            return true
+        }
+        if (lower.contains("dec") || lower.contains("nov")) && (lower.contains("mar") || lower.contains("apr")) {
+            return true
+        }
+        if lower.contains("dec. 1") || lower.contains("dec 1") || lower.contains("december") {
+            return true
+        }
+        return false
+    }
+
+    nonisolated static func isSeasonalWinterOrSnowRule(
+        props: ParkingProperties,
+        schedule: Schedule
+    ) -> Bool {
+        if schedule.condition == "major_snowstorm_declared"
+            || schedule.isSnowRoute == true
+            || props.isSnowRoute == true
+            || props.scheduleCategory == "winter_maintenance"
+            || props.scheduleCategory == "snow_route"
+            || props.scheduleCategory == "snow_streetcar"
+            || props.scheduleCategory.contains("snow")
+            || props.scheduleCategory.contains("winter")
+            || isSeasonalWinterOrSnowText(props.rule)
+            || isSeasonalWinterOrSnowText(schedule.source)
+        {
+            return true
+        }
+        if let cond = schedule.condition, isSeasonalWinterOrSnowText(cond) {
+            return true
+        }
+        if let calendar = schedule.calendar, isWinterCalendar(calendar) {
+            return true
+        }
+        for window in schedule.windows {
+            if let cal = window.calendar, isWinterCalendar(cal) {
+                return true
+            }
+        }
+        return false
+    }
+
+    nonisolated private static func isWinterCalendar(_ calendar: ScheduleCalendar) -> Bool {
+        if let ranges = calendar.monthRanges {
+            for r in ranges {
+                if r.startMonth > r.endMonth {
+                    return true
+                }
+                if r.startMonth == 12 || r.startMonth == 1 || r.startMonth == 2 || r.startMonth == 11 {
+                    if r.endMonth <= 4 || r.endMonth == 12 {
+                        return true
+                    }
+                }
+                if r.endMonth == 3 || r.endMonth == 2 || r.endMonth == 1 {
+                    return true
+                }
+            }
+        }
+        if let months = calendar.months {
+            if months.allSatisfy({ [11, 12, 1, 2, 3, 4].contains($0) }) {
+                return true
+            }
+            if months.contains(12) || months.contains(1) || months.contains(2) {
+                let winterCount = months.filter { [11, 12, 1, 2, 3].contains($0) }.count
+                if Double(winterCount) / Double(months.count) >= 0.5 && months.count <= 6 {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     nonisolated static func evaluateAtSlot(
         props: ParkingProperties,
         slot: Slot,
@@ -67,6 +158,16 @@ enum ScheduleEvaluator {
         guard let schedule = props.schedule else {
             if !includeUnknown {
                 return SlotEvaluation(visible: false, polarity: .unknown, unparsed: true)
+            }
+            if props.isSnowRoute == true
+                || props.scheduleCategory == "winter_maintenance"
+                || props.scheduleCategory == "snow_route"
+                || props.scheduleCategory == "snow_streetcar"
+                || props.scheduleCategory.contains("snow")
+                || props.scheduleCategory.contains("winter")
+                || isSeasonalWinterOrSnowText(props.rule)
+            {
+                return SlotEvaluation(visible: false, polarity: .inactive, unparsed: true)
             }
             return SlotEvaluation(visible: true, polarity: .unknown, unparsed: true)
         }
@@ -82,28 +183,27 @@ enum ScheduleEvaluator {
             )
         }
 
+        let overlaps = ScheduleMembership.overlapsMembership(schedule, slot: slot)
+        let polarity = polarityFromOverlap(
+            category: category,
+            overlaps: overlaps,
+            schedule: schedule
+        )
+        let isWinterSnow = isSeasonalWinterOrSnowRule(props: props, schedule: schedule)
+        let visible = !(isWinterSnow && !overlaps && isRestrictedCategory(category))
+
         if schedule.status == .partial {
-            let overlaps = ScheduleMembership.overlapsMembership(schedule, slot: slot)
             return SlotEvaluation(
-                visible: true,
-                polarity: polarityFromOverlap(
-                    category: category,
-                    overlaps: overlaps,
-                    schedule: schedule
-                ),
+                visible: visible,
+                polarity: polarity,
                 unparsed: true,
                 partial: true
             )
         }
 
-        let overlaps = ScheduleMembership.overlapsMembership(schedule, slot: slot)
         return SlotEvaluation(
-            visible: true,
-            polarity: polarityFromOverlap(
-                category: category,
-                overlaps: overlaps,
-                schedule: schedule
-            ),
+            visible: visible,
+            polarity: polarity,
             unparsed: false
         )
     }
@@ -138,6 +238,8 @@ enum ScheduleEvaluator {
 
         let requestedDurationMinutes = endMinuteOfDay - slot.minuteOfDay
 
+        let isWinterSnow = isSeasonalWinterOrSnowRule(props: props, schedule: schedule)
+
         if schedule.status == .partial {
             let overlaps = ScheduleMembership.overlapsMembershipInRange(
                 schedule,
@@ -149,8 +251,9 @@ enum ScheduleEvaluator {
                 slot: slot,
                 endMinute: endMinuteOfDay
             )
+            let visible = !(isWinterSnow && !overlaps && isRestrictedCategory(category))
             return SlotEvaluation(
-                visible: true,
+                visible: visible,
                 polarity: polarityFromRangeOverlap(
                     category: category,
                     overlaps: overlaps,
@@ -174,9 +277,10 @@ enum ScheduleEvaluator {
             slot: slot,
             endMinute: endMinuteOfDay
         )
+        let visible = !(isWinterSnow && !overlaps && isRestrictedCategory(category))
 
         return SlotEvaluation(
-            visible: true,
+            visible: visible,
             polarity: polarityFromRangeOverlap(
                 category: category,
                 overlaps: overlaps,
@@ -255,9 +359,11 @@ enum ScheduleEvaluator {
 
         let overlaps = overlaps1 || overlaps2
         let fullyCovered = fullyCovered1 && fullyCovered2
+        let isWinterSnow = isSeasonalWinterOrSnowRule(props: props, schedule: schedule)
+        let visible = !(isWinterSnow && !overlaps && isRestrictedCategory(category))
 
         return SlotEvaluation(
-            visible: true,
+            visible: visible,
             polarity: polarityFromRangeOverlap(
                 category: category,
                 overlaps: overlaps,

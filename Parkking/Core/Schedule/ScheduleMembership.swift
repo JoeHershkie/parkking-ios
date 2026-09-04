@@ -222,10 +222,11 @@ enum ScheduleMembership {
     ) -> Bool {
         guard let schedule, schedule.status != .failed else { return false }
 
+        if schedule.condition == "major_snowstorm_declared" {
+            return slot.majorSnowstorm == true
+        }
+
         if schedule.status == .conditional {
-            if schedule.condition == "major_snowstorm_declared" {
-                return slot.majorSnowstorm == true
-            }
             return false
         }
 
@@ -252,10 +253,11 @@ enum ScheduleMembership {
     ) -> Bool {
         guard let schedule, schedule.status != .failed else { return false }
 
+        if schedule.condition == "major_snowstorm_declared" {
+            return slot.majorSnowstorm == true
+        }
+
         if schedule.status == .conditional {
-            if schedule.condition == "major_snowstorm_declared" {
-                return slot.majorSnowstorm == true
-            }
             return false
         }
 
@@ -282,10 +284,10 @@ enum ScheduleMembership {
         endMinute: Int
     ) -> Bool {
         if schedule.status == .failed { return false }
+        if schedule.condition == "major_snowstorm_declared" {
+            return slot.majorSnowstorm == true
+        }
         if schedule.status == .conditional {
-            if schedule.condition == "major_snowstorm_declared" {
-                return slot.majorSnowstorm == true
-            }
             return false
         }
         if schedule.status == .anytime {

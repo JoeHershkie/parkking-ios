@@ -87,7 +87,17 @@ struct CurbOverlapResolverTests {
             coords: [[-79.4, 43.65], [-79.401, 43.65]]
         )
 
+        let snowRoute = lineFeature(
+            id: "7",
+            street: "Queen St",
+            side: "North",
+            category: "snow_route",
+            polarity: .restricted,
+            coords: [[-79.4, 43.65], [-79.401, 43.65]]
+        )
+
         #expect(CurbOverlapResolver.precedenceScore(feature: noStopping) == 50)
+        #expect(CurbOverlapResolver.precedenceScore(feature: snowRoute) == 45)
         #expect(CurbOverlapResolver.precedenceScore(feature: noStanding) == 40)
         #expect(CurbOverlapResolver.precedenceScore(feature: permitGreen) == 30)
         #expect(CurbOverlapResolver.precedenceScore(feature: noParking) == 20)

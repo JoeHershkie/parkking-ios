@@ -472,4 +472,211 @@ struct CurbVerdictTests {
         #expect(v.allowedStartMinute == 0)
         #expect(v.allowedEndMinute == 120)
     }
+
+    @Test func inactiveWinterRuleSuppressedFromVisibilityAndGivesLikelyAllowed() {
+        // Dec 1 - Mar 31 No Parking 2am-6am
+        let winterSchedule = Schedule(
+            status: .ok,
+            source: "Dec 1 - Mar 31 2am-6am",
+            windows: [
+                TimeWindow(days: [0, 1, 2, 3, 4, 5, 6], startMinute: 120, endMinute: 360)
+            ],
+            calendar: ScheduleCalendar(
+                monthRanges: [
+                    CalendarMonthRange(startMonth: 12, startDay: 1, endMonth: 3, endDay: 31)
+                ]
+            )
+        )
+        let winterFeat = feature("no_parking", winterSchedule)
+        let maySlot = Slot(dayOfWeek: 2, minuteOfDay: 180, month: 5, dayOfMonth: 15, year: 2026)
+
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: winterFeat.properties, slot: maySlot, includeUnknown: true)
+        #expect(eval.visible == false)
+        #expect(eval.polarity == FilterPolarity.inactive)
+
+        let v = verdict(
+            features: [winterFeat],
+            slot: maySlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.likelyAllowed)
+        #expect(v.headline == "Likely allowed")
+        #expect(v.primaryReason == "No active restriction for this interval.")
+    }
+
+    @Test func activeWinterRuleShowsRestricted() {
+        let winterSchedule = Schedule(
+            status: .ok,
+            source: "Dec 1 - Mar 31 2am-6am",
+            windows: [
+                TimeWindow(days: [0, 1, 2, 3, 4, 5, 6], startMinute: 120, endMinute: 360)
+            ],
+            calendar: ScheduleCalendar(
+                monthRanges: [
+                    CalendarMonthRange(startMonth: 12, startDay: 1, endMonth: 3, endDay: 31)
+                ]
+            )
+        )
+        let winterFeat = feature("no_parking", winterSchedule)
+        let janSlot = Slot(dayOfWeek: 2, minuteOfDay: 180, month: 1, dayOfMonth: 15, year: 2026)
+
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: winterFeat.properties, slot: janSlot, includeUnknown: true)
+        #expect(eval.visible == true)
+        #expect(eval.polarity == FilterPolarity.restricted)
+
+        let v = verdict(
+            features: [winterFeat],
+            slot: janSlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.notAllowed)
+        #expect(v.headline == "Not allowed")
+    }
+
+    @Test func inactiveSnowStormSuppressedFromVisibility() {
+        let snowStormSchedule = Schedule(
+            status: .ok,
+            source: "During major snow storm",
+            condition: "major_snowstorm_declared"
+        )
+        let feat = feature("no_parking", snowStormSchedule)
+        let calmSlot = Slot(dayOfWeek: 2, minuteOfDay: 600, month: 1, dayOfMonth: 15, year: 2026, majorSnowstorm: false)
+
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: feat.properties, slot: calmSlot, includeUnknown: true)
+        #expect(eval.visible == false)
+        #expect(eval.polarity == FilterPolarity.inactive)
+
+        let v = verdict(
+            features: [feat],
+            slot: calmSlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.likelyAllowed)
+        #expect(v.headline == "Likely allowed")
+        #expect(v.primaryReason == "No active restriction for this interval.")
+    }
+
+    @Test func activeSnowStormDeclaredShowsRestricted() {
+        let snowStormSchedule = Schedule(
+            status: .ok,
+            source: "During major snow storm",
+            condition: "major_snowstorm_declared"
+        )
+        let feat = feature("no_parking", snowStormSchedule)
+        let emergencySlot = Slot(dayOfWeek: 2, minuteOfDay: 600, month: 1, dayOfMonth: 15, year: 2026, majorSnowstorm: true)
+
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: feat.properties, slot: emergencySlot, includeUnknown: true)
+        #expect(eval.visible == true)
+        #expect(eval.polarity == FilterPolarity.restricted)
+
+        let v = verdict(
+            features: [feat],
+            slot: emergencySlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.notAllowed)
+        #expect(v.headline == "Not allowed")
+    }
+
+    @Test func winterMaintenanceCategorySuppressedFromVisibilityAndGivesLikelyAllowed() {
+        // 2:00 a.m. to 6:00 a.m. from Dec. 1 to Mar. 31 under category winter_maintenance (like Cranbrooke Ave)
+        let schedule = Schedule(
+            status: .ok,
+            source: "2:00 a.m. to 6:00 a.m. from Dec. 1 to Mar. 31",
+            windows: [
+                TimeWindow(
+                    days: [0, 1, 2, 3, 4, 5, 6],
+                    startMinute: 120,
+                    endMinute: 360,
+                    crossesMidnight: false,
+                    calendar: ScheduleCalendar(
+                        monthRanges: [CalendarMonthRange(startMonth: 12, startDay: 1, endMonth: 3, endDay: 31)]
+                    )
+                )
+            ]
+        )
+        let feat = feature("winter_maintenance", schedule)
+
+        // Slot in September (outside winter) at 3:16 AM
+        let septSlot = Slot(dayOfWeek: 3, minuteOfDay: 196, month: 9, dayOfMonth: 2, year: 2026)
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: feat.properties, slot: septSlot, includeUnknown: true)
+        #expect(eval.visible == false)
+        #expect(eval.polarity == FilterPolarity.inactive)
+
+        let v = verdict(
+            features: [feat],
+            slot: septSlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.likelyAllowed)
+        #expect(v.headline == "Likely allowed")
+        #expect(v.primaryReason == "No active restriction for this interval.")
+    }
+
+    @Test func daytimePermittedParkingWithRegionalWinterRuleMetadataRendersGreen() {
+        // 8:00 a.m. to 6:00 p.m. restricted_periods with regionalWinterRule metadata
+        let schedule = Schedule(
+            status: .ok,
+            source: "8:00 a.m. to 6:00 p.m.",
+            windows: [
+                TimeWindow(days: [0, 1, 2, 3, 4, 5, 6], startMinute: 480, endMinute: 1080)
+            ]
+        )
+        let feat = feature("restricted_periods", schedule) {
+            $0.highway = "Dunmurray Blvd"
+            $0.rule = "8:00 a.m. to 6:00 p.m."
+            $0.regionalWinterRule = "2:00 a.m. to 6:00 a.m. from Nov. 1 to Mar. 31"
+        }
+
+        // Query at 2:00 PM (840 min)
+        let afternoonSlot = Slot(dayOfWeek: 3, minuteOfDay: 840, month: 9, dayOfMonth: 2, year: 2026)
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: feat.properties, slot: afternoonSlot, includeUnknown: true)
+        #expect(eval.visible == true)
+        #expect(eval.polarity == FilterPolarity.permitted)
+
+        let v = verdict(
+            features: [feat],
+            slot: afternoonSlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.parkingAllowed)
+        #expect(v.headline == "Parking allowed")
+    }
+
+    @Test func daytimeProhibitionOutsideActiveHoursWithRegionalWinterRuleMetadataRendersGreen() {
+        // 8:00 a.m. to 6:00 p.m. Mon to Fri No Parking with regionalWinterRule metadata
+        let schedule = Schedule(
+            status: .ok,
+            source: "8:00 a.m. to 6:00 p.m., Mon. to Fri.",
+            windows: [
+                TimeWindow(days: [1, 2, 3, 4, 5], startMinute: 480, endMinute: 1080)
+            ]
+        )
+        let feat = feature("no_parking", schedule) {
+            $0.highway = "Fairlawn Ave"
+            $0.rule = "8:00 a.m. to 6:00 p.m., Mon. to Fri."
+            $0.regionalWinterRule = "2:00 a.m. to 6:00 a.m. from Dec. 1 to Mar. 31"
+        }
+
+        // Query on Saturday at 2:00 PM (daytime prohibition not active)
+        let saturdaySlot = Slot(dayOfWeek: 6, minuteOfDay: 840, month: 9, dayOfMonth: 5, year: 2026)
+        let eval = ScheduleEvaluator.evaluateAtSlot(props: feat.properties, slot: saturdaySlot, includeUnknown: true)
+        #expect(eval.visible == true)
+        #expect(eval.polarity == FilterPolarity.inactive)
+
+        let v = verdict(
+            features: [feat],
+            slot: saturdaySlot,
+            effectiveEndMinute: nil,
+            requestedDurationMinutes: 60
+        )
+        #expect(v.status == CurbVerdictStatus.parkingAllowed)
+        #expect(v.headline == "Parking allowed")
+    }
 }

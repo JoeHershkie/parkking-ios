@@ -53,18 +53,9 @@ struct RuleDetailsView: View {
                 }
             }
 
-            // Pipeline Data Badges (Permit Area, Hydrant, Snow Route, Streetcar)
-            if props.permitAreaID != nil || props.hasHydrant == true || props.isSnowRoute == true || props.streetcarCorridor == true {
+            // Pipeline Data Badges (Hydrant, Snow Route, Streetcar)
+            if props.hasHydrant == true || props.isSnowRoute == true || props.streetcarCorridor == true {
                 FlowLayout(spacing: 6) {
-                    if let permitID = props.permitAreaID {
-                        Label("Permit Area \(permitID)", systemImage: "parkingsign.circle.fill")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.purple.opacity(0.15), in: Capsule())
-                            .foregroundStyle(Color.purple)
-                    }
-
                     if props.hasHydrant == true {
                         Label("3m Hydrant Setback", systemImage: "flame.fill")
                             .font(.caption2.weight(.semibold))
